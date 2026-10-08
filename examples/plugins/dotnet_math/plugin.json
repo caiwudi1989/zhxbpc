@@ -1,0 +1,1 @@
+{"id":"example.dotnet_math","name":".NET Probe","version":"1.0.0","kind":"dotnet","entry":"Pcide.Example.dll","architecture":"x64","capabilities":["math.answer"],"permissions":["native.example"],"dependencies":{},"api_version":1}

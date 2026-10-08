@@ -1,0 +1,1 @@
+{"id":"example.mock_vision","name":"Mock Vision","version":"1.0.0","kind":"python","entry":"plugin.py","capabilities":["ocr","yolo"],"permissions":["vision.simulated"],"dependencies":{},"api_version":1,"python_abi":"cp312"}

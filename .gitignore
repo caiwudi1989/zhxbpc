@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+
+# Local/generated data: never upload caches or environments.
+cache/
+runtime/
+build/
+downloads/
+sdk/
+assets/
+third_party/
+
+# Local project outputs and temporary state.
+projects/
+*.tmp
+*.log
+*.user
+*.bak
+
+# IDE and packaging leftovers.
+.venv/
+venv/
+__pycache__/
+dist/
+*.egg-info/

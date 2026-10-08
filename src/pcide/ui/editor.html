@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body,#editor{width:100%;height:100%;margin:0;overflow:hidden;background:#fbfbfa!important;color:#202124}
+#editor,.monaco-editor,.monaco-editor-background,.monaco-editor .margin,.monaco-editor .overflow-guard,
+.monaco-editor .monaco-scrollable-element{background-color:#fbfbfa!important}
+.monaco-editor .margin{background-color:#f3f5f7!important}
+.pcide-breakpoint{background:#d5453e;border-radius:50%;width:10px!important;height:10px!important;margin:3px}
+.routine-zone{padding:10px 0 4px 12px;font:14px 'Microsoft YaHei UI',sans-serif;color:#202124;box-sizing:border-box}
+.routine-zone table{border-collapse:collapse;margin:0 0 4px 0;background:#fbfbfa}
+.routine-zone th,.routine-zone td{border:1px solid #9daba5;padding:3px 8px;min-width:55px;height:20px;text-align:left;font-weight:normal}
+.routine-zone th{background:#e7eee6}.routine-zone input{border:0;background:transparent;color:#0000aa;font:inherit;min-width:120px;outline:none}
+</style></head><body><div id="editor"></div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script src="pcide://editor/vs/loader.js"></script>
+<script>
+'use strict';
+window.MonacoEnvironment={getWorkerUrl:()=> 'pcide://editor/worker.js'};
+require.config({paths:{vs:'pcide://editor/vs'}});
+require(['vs/editor/editor.main'],()=>{
+ new QWebChannel(qt.webChannelTransport,channel=>{
+  const bridge=channel.objects.bridge, models=new Map();
+  monaco.editor.defineTheme('pcide-light',{base:'vs',inherit:true,rules:[
+   {token:'comment',foreground:'#6b8e23'},{token:'string',foreground:'#a31515'},
+   {token:'keyword',foreground:'#0000aa',fontStyle:'bold'},{token:'number',foreground:'#098658'}
+  ],colors:{'editor.background':'#FBFBFA','editor.foreground':'#202124','editor.lineHighlightBackground':'#EEF5FF',
+   'editorLineNumber.foreground':'#9AA4AF','editorLineNumber.activeForeground':'#176AC6',
+   'editorGutter.background':'#F3F5F7','editorOverviewRuler.background':'#FBFBFA','editor.selectionBackground':'#CFE3FF',
+   'editorOverviewRuler.border':'#FBFBFA','scrollbarSlider.background':'#C4CBD3','scrollbarSlider.hoverBackground':'#AAB4BF',
+   'scrollbarSlider.activeBackground':'#8E9AA7'}});
+  const editor=monaco.editor.create(document.getElementById('editor'),{
+   language:'python',theme:'pcide-light',automaticLayout:true,fontSize:14,
+   fontFamily:'Consolas, "Microsoft YaHei UI", monospace',glyphMargin:true,minimap:{enabled:false},
+   scrollBeyondLastLine:false,tabSize:4,insertSpaces:true,lineNumbersMinChars:4,
+   renderLineHighlight:'all',quickSuggestions:{other:true,comments:true,strings:true},
+   suggestOnTriggerCharacters:true,wordBasedSuggestions:'currentDocument',
+   padding:{top:8,bottom:12},smoothScrolling:true,foldingStrategy:'indentation',showFoldingControls:'always'
+  });
+  const kindMap={variable:monaco.languages.CompletionItemKind.Variable,
+   constant:monaco.languages.CompletionItemKind.Constant,function:monaco.languages.CompletionItemKind.Function,
+   method:monaco.languages.CompletionItemKind.Method,keyword:monaco.languages.CompletionItemKind.Keyword,
+   class:monaco.languages.CompletionItemKind.Class,field:monaco.languages.CompletionItemKind.Field,
+   snippet:monaco.languages.CompletionItemKind.Snippet};
+  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[];
+  function projectText(text,reverse=false){
+   const map=reverse?Object.fromEntries(Object.entries(words).map(([a,b])=>[b,a])):words;
+   const tokens=currentLanguage==='python'?/\#.*?$|'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[\p{L}_][\p{L}\p{N}_]*/gmu:
+    /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[\p{L}_][\p{L}\p{N}_]*/gmu;
+   return text.replace(tokens,token=>map[token]||token);
+  }
+  function renderRoutines(){
+   const model=editor.getModel();if(!model)return;
+   editor.changeViewZones(accessor=>{zones.forEach(id=>accessor.removeZone(id));zones=[];
+    if(!['python','javascript','typescript'].includes(currentLanguage))return;
+    const lines=model.getLinesContent();
+    lines.forEach((line,index)=>{
+     const match=line.match(/^\s*(?:def|function|子程序)\s+([^\s(]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?/u);if(!match)return;
+     const node=document.createElement('div');node.className='routine-zone';
+     const table=document.createElement('table'),head=table.insertRow();
+     ['子程序名','返回值类型','公开','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;head.appendChild(th);});
+     const row=table.insertRow(),name=document.createElement('input');name.value=match[1];row.insertCell().appendChild(name);
+     name.onchange=()=>{if(!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name.value)){name.value=match[1];return;}
+      const offset=line.indexOf(match[1]);editor.executeEdits('routine-name',[{range:new monaco.Range(index+1,offset+1,index+1,offset+1+match[1].length),text:name.value}]);};
+     [match[3]||'无','', ''].forEach(text=>row.insertCell().textContent=text);node.appendChild(table);
+     const params=match[2].split(',').map(value=>value.trim()).filter(Boolean);
+     if(params.length){const pt=document.createElement('table'),ph=pt.insertRow();['参数名','类型','默认值','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;ph.appendChild(th);});
+      params.forEach(param=>{const r=pt.insertRow(),parts=param.split('=');const names=parts[0].split(':');[names[0],names[1]||'自动',parts[1]||'', ''].forEach(text=>r.insertCell().textContent=text);});node.appendChild(pt);}
+     const height=58+(params.length?28*(params.length+1):0);
+     zones.push(accessor.addZone({afterLineNumber:index,heightInPx:height,domNode:node,suppressMouseDown:false}));
+    });
+   });
+  }
+  const providers=[];
+  function configureCompletions(items){
+   completionItems=Array.isArray(items)?items:[];
+  }
+  function completionProvider(){return {triggerCharacters:['.',':','。'],provideCompletionItems(model,position){
+   const word=model.getWordUntilPosition(position),range={startLineNumber:position.lineNumber,startColumn:word.startColumn,
+    endLineNumber:position.lineNumber,endColumn:word.endColumn};
+   const suggestions=completionItems.map(item=>({label:item.label,kind:kindMap[item.kind]||kindMap.variable,
+    insertText:item.insertText||item.label,insertTextRules:item.insertText&&item.insertText.indexOf('${')>=0?
+    monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet:undefined,detail:item.detail||'项目符号',
+    documentation:item.documentation||'',range}));
+   return {suggestions};
+  }};}
+  ['python','javascript','typescript','json','csharp','cpp','plaintext'].forEach(language=>
+   providers.push(monaco.languages.registerCompletionItemProvider(language,completionProvider())));
+  monaco.languages.registerSignatureHelpProvider(['python','javascript','typescript'],{
+   signatureHelpTriggerCharacters:['(', ','],signatureHelpRetriggerCharacters:[','],
+   provideSignatureHelp(model,position){
+    const line=model.getLineContent(position.lineNumber).slice(0,position.column-1),match=line.match(/([A-Za-z_][\w.]*)\([^()]*$/);
+    if(!match)return {value:{signatures:[],activeSignature:0,activeParameter:0},dispose(){}};
+    const item=completionItems.find(value=>value.label===match[1].split('.').pop());
+    if(!item||!Array.isArray(item.parameters)||!item.parameters.length)return {value:{signatures:[],activeSignature:0,activeParameter:0},dispose(){}};
+    const params=item.parameters.map(value=>typeof value==='string'?{label:value}:value);
+    return {value:{signatures:[{label:item.label+'('+params.map(value=>value.label).join(', ')+')',documentation:item.documentation||'',parameters:params}],activeSignature:0,activeParameter:Math.max(0,(line.match(/,/g)||[]).length)},dispose(){}};
+   }
+  });
+  let currentLanguage='python';
+  window.pcide={
+   open(data){loading=true;path=data.path;currentLanguage=data.language||'plaintext';chinese=Boolean(data.chinese)&&['python','javascript','typescript'].includes(currentLanguage);words=data.words||{};configureCompletions(data.completions);let model=models.get(path);
+    const display=chinese?projectText(data.text):data.text;
+    if(!model){model=monaco.editor.createModel(display,data.language,monaco.Uri.file(path));models.set(path,model);}else if(model.getValue()!==display)model.setValue(display);
+    editor.setModel(model);monaco.editor.setModelLanguage(model,currentLanguage);renderRoutines();loading=false;editor.focus();},
+   setCompletions(items){configureCompletions(items);},
+   snapshot(){return {path,text:chinese?projectText(editor.getValue(),true):editor.getValue(),displayText:editor.getValue(),routineBlocks:zones.length,models:models.size,position:editor.getPosition()};},
+   goto(line){editor.revealLineInCenter(line);editor.setPosition({lineNumber:line,column:1});editor.focus();},
+   setValue(text){editor.setValue(chinese?projectText(text):text);},
+   insertText(text){editor.executeEdits('pcide',[{range:editor.getSelection(),text:chinese?projectText(text):text,forceMoveMarkers:true}]);editor.focus();},
+   triggerSuggest(){editor.trigger('pcide','editor.action.triggerSuggest',{});},
+   toggleFold(){editor.trigger('pcide','editor.action.toggleFold',{});},
+   formatDocument(){editor.getAction('editor.action.formatDocument')?.run();},
+   breakpoints(lines){decorations=editor.deltaDecorations(decorations,lines.map(line=>({range:new monaco.Range(line,1,line,1),options:{glyphMarginClassName:'pcide-breakpoint'}})));},
+   dispose(){editor.setModel(null);for(const m of models.values())m.dispose();models.clear();path='';}
+  };
+  editor.onDidChangeModelContent(()=>{if(!loading&&path){bridge.textChanged(path,editor.getValue());renderRoutines();}});
+  editor.onDidChangeCursorPosition(e=>{if(path)bridge.cursorChanged(path,e.position.lineNumber);});
+  editor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN&&path)bridge.toggleBreakpoint(path,e.target.position.lineNumber);});
+  bridge.editorReady();
+ });
+},error=>{document.getElementById('editor').textContent='Monaco failed: '+error.message;});
+</script></body></html>

@@ -1,0 +1,1 @@
+{"id":"example.native_math","name":"C ABI Probe","version":"1.0.0","kind":"native","entry":"native_math.dll","architecture":"x64","capabilities":["math.answer"],"permissions":["native.example"],"dependencies":{},"api_version":1,"abi":"c-json-v1"}
