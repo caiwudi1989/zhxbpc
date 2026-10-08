@@ -40,3 +40,5 @@
 - 2026-10-09 子程序信息区重叠修复：Monaco view zone 原先使用零基 `index` 作为一基 `afterLineNumber`，把参数/返回值表插到了声明行上方；现改为 `index+1` 并扩大高度预算，避免表格与声明及函数体重叠。新增静态回归测试，源码内联脚本语法检查和冻结版 smoke/UI smoke 通过。
 
 - 2026-10-09：新增 	ools/backup_source.ps1 与 docs/backup-policy.md，规定只备份源码/文档/测试/示例/配置，排除缓存、构建产物和运行环境；每次同步 main 与 ackup/YYYY-MM-DD 到 GitHub/Gitee。
+
+- 2026-10-09：备份规则补充：GitHub/Gitee 双端推送成功后，仅删除 cache/backup/ 和 cache/backups/ 中的本地备份包与备份缓存；失败或本地演练不清理。

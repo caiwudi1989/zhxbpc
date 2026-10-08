@@ -20,3 +20,7 @@
 ```powershell
 .\tools\backup_source.ps1 -SkipPush
 ```
+
+4. 两个远程均推送成功后，删除本地专用备份目录 cache/backup/ 和 cache/backups/ 中的备份包与备份缓存；任一推送失败或使用 -SkipPush 时不清理。
+
+清理范围仅限上述专用目录，不删除构建产物、运行环境或其他缓存。

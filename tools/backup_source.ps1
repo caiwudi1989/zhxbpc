@@ -36,6 +36,17 @@ else { Invoke-Git @('branch', '-f', $dateBranch, 'main') }
 if (-not $SkipPush) {
     Invoke-Git @('push', 'origin', 'main', $dateBranch)
     Invoke-Git @('push', 'gitee', 'main', $dateBranch)
+
+    foreach ($relative in @('cache/backup', 'cache/backups')) {
+        $target = [System.IO.Path]::GetFullPath((Join-Path $Root $relative))
+        $cacheRoot = [System.IO.Path]::GetFullPath((Join-Path $Root 'cache'))
+        if (-not $target.StartsWith($cacheRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe backup cleanup path: $target" }
+        if (Test-Path -LiteralPath $target) {
+            $item = Get-Item -LiteralPath $target -Force
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { throw "Refusing to clean linked backup path: $target" }
+            Remove-Item -LiteralPath $target -Recurse -Force
+        }
+    }
 }
 
 Write-Host "Source backup complete: main and $dateBranch"
