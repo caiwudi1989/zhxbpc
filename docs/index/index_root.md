@@ -29,3 +29,6 @@
 - `architecture.md`: directory/data/entry chains and delivery boundaries.
 - `archive/verification.md`: commands, exit status, artifact evidence and limitations.
 - [PC Module Index](平台/pc.md)
+
+- 	ools/backup_source.ps1: 源码备份规则，提交 main、日期分支并推送 GitHub/Gitee，排除缓存和环境。
+- docs/backup-policy.md: GitHub/Gitee 源码备份规则。

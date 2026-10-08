@@ -38,3 +38,5 @@
 - 2026-10-09 构建优化：独立 EXE 归档仅压缩小型文本/字节码，DLL/模型/媒体等高密度二进制直接流式写入，并将打包格式纳入指纹；隔离 HelloAutomation 测得首次 2.398 秒、增量 2.226 秒、无变化 1.114 秒。示例交付 `cache/logs/delivery.json` 中 Python/JS/TS 首次分别 3.231/1.689/1.587 秒，缓存分别 1.133/1.390/1.393 秒。
 - 2026-10-09 Monaco 空白修复：`ui/editor.html` 的 Python 中文视图正则使用了 Unicode 模式下非法的 `\#` identity escape，导致 Chromium 在脚本解析阶段报 `Invalid regular expression`，代码模型未创建而显示空白。已改为合法的 `/#.../u`，新增静态回归测试并重建 `build/PCIDE/PCIDE.exe`；Node 内联脚本语法检查、源码/冻结版 smoke 和原生 UI smoke 均通过。
 - 2026-10-09 子程序信息区重叠修复：Monaco view zone 原先使用零基 `index` 作为一基 `afterLineNumber`，把参数/返回值表插到了声明行上方；现改为 `index+1` 并扩大高度预算，避免表格与声明及函数体重叠。新增静态回归测试，源码内联脚本语法检查和冻结版 smoke/UI smoke 通过。
+
+- 2026-10-09：新增 	ools/backup_source.ps1 与 docs/backup-policy.md，规定只备份源码/文档/测试/示例/配置，排除缓存、构建产物和运行环境；每次同步 main 与 ackup/YYYY-MM-DD 到 GitHub/Gitee。
