@@ -5,6 +5,7 @@ import copy
 import threading
 import time
 import unittest
+from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
@@ -46,6 +47,18 @@ class UiTests(WorkspaceCase):
                 return
             QTest.qWait(10)
         self.fail("Qt operation did not complete")
+
+    def test_editor_python_projection_regex_is_unicode_safe(self):
+        """The Monaco bundle must parse before it can create the code model."""
+        source = (Path(__file__).resolve().parents[1] / "src" / "pcide" / "ui" / "editor.html").read_text(encoding="utf-8")
+        token_line = next(line for line in source.splitlines() if "const tokens=currentLanguage" in line)
+        self.assertNotIn(r"/\#", token_line)
+        self.assertIn("const tokens=currentLanguage==='python'?/#", token_line)
+
+    def test_editor_routine_zone_is_after_declaration(self):
+        source = (Path(__file__).resolve().parents[1] / "src" / "pcide" / "ui" / "editor.html").read_text(encoding="utf-8")
+        zone_line = next(line for line in source.splitlines() if "accessor.addZone" in line)
+        self.assertIn("afterLineNumber:index+1", zone_line)
 
     def javascript(self, code):
         values = []
@@ -213,6 +226,17 @@ class UiTests(WorkspaceCase):
         self.assertIn("重命名当前窗口", labels)
         self.assertIn("删除当前窗口", labels)
 
+    def test_project_and_editor_menus_expose_lifecycle_actions(self):
+        menus = {menu.title(): menu for menu in self.window.menuBar().findChildren(type(self.window.window_menu))}
+        project_menu = menus["项目"]
+        project_labels = [action.text() for action in project_menu.actions()]
+        for label in ("项目另存为", "导入项目", "重命名项目", "关闭项目", "删除项目"):
+            self.assertIn(label, project_labels)
+        code_menu = menus["代码"]
+        code_labels = [action.text() for action in code_menu.actions()]
+        self.assertIn("查找替换", code_labels)
+        self.assertIn("保存当前文件为", code_labels)
+
     def test_categorized_toolbox_and_reactive_control_properties(self):
         groups = [self.window.toolbox.topLevelItem(index).text(0) for index in range(self.window.toolbox.topLevelItemCount())]
         self.assertEqual(groups, ["基本组件", "数据与视图", "容器与布局", "高级控件"])
@@ -231,6 +255,8 @@ class UiTests(WorkspaceCase):
         self.until(lambda: self.window.designer.items_by_id["Button1"].data["properties"]["text"] == "已修改")
 
     def test_monaco_typescript_worker_diagnostics(self):
+        if self.window.editor._fallback:
+            self.skipTest("受限环境使用原生编辑器；Monaco TypeScript worker 需正常桌面验收")
         path = self.window.project.root / "src/diagnostic.ts"
         path.write_text("const value: number = 'invalid';\n", encoding="utf-8")
         self.window.editor.load(path)

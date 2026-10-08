@@ -28,6 +28,10 @@ class ProjectError(ValueError):
     pass
 
 
+MAX_PROJECT_IMPORT_FILES = 10000
+MAX_PROJECT_IMPORT_BYTES = 512 * 1024 * 1024
+
+
 def relative_file(root: Path, value: str | Path) -> Path:
     if not isinstance(value, (str, Path)):
         raise ProjectError("relative path must be text")
@@ -193,7 +197,7 @@ class Project:
         self.manifest = manifest
         if not isinstance(manifest, dict) or manifest.get("schema") != 1:
             raise ProjectError("unsupported project schema")
-        if manifest.get("language") not in {"python", "javascript", "typescript"}:
+        if manifest.get("language") not in {"python", "javascript", "typescript", "zhxb"}:
             raise ProjectError("unsupported script language")
         if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
             raise ProjectError("project name required")
@@ -209,6 +213,11 @@ class Project:
         for field in ("modules", "permissions", "plugins"):
             if not isinstance(manifest.get(field, []), list) or any(not isinstance(v, str) for v in manifest.get(field, [])):
                 raise ProjectError(f"{field} must be an array of strings")
+        from .platform import validate_platform
+        try:
+            self.manifest["platform"] = validate_platform(manifest.get("platform"))
+        except ValueError as exc:
+            raise ProjectError(str(exc)) from exc
         self.entry_path
 
     @property
@@ -337,7 +346,40 @@ class Project:
         return target
 
     def save_manifest(self):
+        from .platform import validate_platform
+        self.manifest["platform"] = validate_platform(self.manifest.get("platform"))
         atomic_write_json(self.ide_dir / "project.json", self.manifest)
+
+    @classmethod
+    def copy_to(cls, source: str | Path, destination: str | Path):
+        """Copy a project after validating symlink and size boundaries."""
+        source = Path(source).resolve()
+        destination = Path(destination).resolve()
+        if not source.is_dir() or source.is_symlink():
+            raise ProjectError("项目目录不存在或不受支持")
+        if destination.exists() or destination.is_symlink() or destination == source:
+            raise ProjectError("目标项目目录已存在")
+        files = []
+        total = 0
+        for path in source.rglob("*"):
+            if path.is_symlink():
+                raise ProjectError(f"项目包含不允许的符号链接：{path.name}")
+            if path.is_file():
+                total += path.stat().st_size
+                files.append(path)
+                if len(files) > MAX_PROJECT_IMPORT_FILES:
+                    raise ProjectError("项目文件数量超过导入上限")
+                if total > MAX_PROJECT_IMPORT_BYTES:
+                    raise ProjectError("项目体积超过导入上限")
+        if not (source / ".pcide" / "project.json").is_file():
+            raise ProjectError("缺少 .pcide/project.json")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, destination, symlinks=False)
+        return cls.open(destination)
+
+    def platform_providers(self):
+        from .platform import discover_providers
+        return discover_providers(self.root)
 
     def load_form(self):
         return validate_form(read_json(self.form_path, copy.deepcopy(DEFAULT_FORM)))
@@ -353,14 +395,14 @@ class Project:
         atomic_write_json(self.flow_path, validate_flow(value))
 
     def scripts(self):
-        return sorted(p for p in (self.root / "src").rglob("*") if p.is_file() and p.suffix in {".py", ".js", ".ts"})
+        return sorted(p for p in (self.root / "src").rglob("*") if p.is_file() and p.suffix in {".py", ".js", ".ts", ".zhxb"})
 
     def input_files_for_build(self):
         files = [self.ide_dir / "project.json", self.flow_path]
         ui = self.root / "ui"
         if ui.exists():
             files.extend(p for p in ui.rglob("*.form.json") if p.is_file() and not p.is_symlink())
-        for folder in ("src", "plugins", "resources"):
+        for folder in ("src", "plugins", "providers", "resources", "database", "api", "models", "game"):
             directory = self.root / folder
             if directory.exists():
                 files.extend(p for p in directory.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
@@ -386,20 +428,22 @@ class Project:
 
     @classmethod
     def create(cls, paths: Paths, name: str, language="python"):
-        if language not in {"python", "javascript", "typescript"}:
+        if language not in {"python", "javascript", "typescript", "zhxb"}:
             raise ProjectError("unsupported language")
         if not name.strip() or name in {".", ".."} or any(c in name for c in '\\/:*?"<>|'):
             raise ProjectError("invalid project name")
         root = paths.project(name)
         if root.exists() and any(root.iterdir()):
             raise ProjectError("project directory is not empty")
-        ext = {"python": "py", "javascript": "js", "typescript": "ts"}[language]
+        ext = {"python": "py", "javascript": "js", "typescript": "ts", "zhxb": "zhxb"}[language]
         project = cls(root, {"schema": 1, "name": root.name, "language": language, "entry": f"src/main.{ext}",
                             "modules": [], "execution": {"timeout_seconds": 60, "max_output_lines": 5000},
                             "permissions": ["vision.simulated"], "plugins": []})
-        for directory in (".pcide", "src", "ui", "flows", "plugins", "resources", "vision/dataset"):
+        for directory in (".pcide", "src", "ui", "flows", "plugins", "providers", "resources", "database", "api", "models", "game", "vision/dataset"):
             (root / directory).mkdir(parents=True, exist_ok=True)
-        if language == "python":
+        if language == "zhxb":
+            source = (".版本 2\n.程序集 窗口程序集1\n.子程序 主程序\n输出(\"脚本已就绪\")\n")
+        elif language == "python":
             source = ("from pcide.runtime_api import ocr_mock, yolo_mock, ui\n\n"
                       "def on_main_form_load(event=None):\n    print('主窗体已加载')\n\n"
                       "def on_Button1_click(event=None):\n    result = ocr_mock('demo screenshot', 'Hello')\n"
@@ -415,11 +459,15 @@ class Project:
         project.entry_path.write_text(source, encoding="utf-8")
         project.save_manifest()
         form = copy.deepcopy(DEFAULT_FORM)
+        if language == "zhxb":
+            form["form"]["events"] = {}
         form["controls"] = [ControlModel("Button1", "Button", "Button1", x=30, y=30,
                            properties={"text": "运行事件", "visible": True, "enabled": True},
                            events={"click": "on_Button1_click"}).to_dict(),
                            ControlModel("Label1", "Label", "Label1", x=30, y=85, width=260,
                            properties={"text": "就绪", "visible": True, "enabled": True}).to_dict()]
+        if language == "zhxb":
+            form["controls"][0]["events"] = {}
         project.save_form(form)
         project.save_flow({"version": 1, "nodes": [
             {"id": "start", "kind": "log", "label": "开始", "position": [30, 30], "config": {"message": "流程已开始"}},
@@ -431,6 +479,8 @@ class Project:
     @classmethod
     def open(cls, path):
         root = Path(path).resolve()
+        if not root.is_dir() or root.is_symlink():
+            raise ProjectError(f"项目目录不存在或不受支持: {root}")
         manifest = read_json(root / ".pcide" / "project.json")
         if manifest is None:
             raise ProjectError(f"not a PCIDE project: {root}")

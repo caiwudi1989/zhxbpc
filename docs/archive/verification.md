@@ -23,6 +23,17 @@ All commands below ran from `F:\PC端软件` with the project development enviro
 - No Android device/ADB endpoint was available, so Android ART/DexClassLoader execution remains unverified; PC WebSocket fixture tests cover request ownership and disconnect errors only.
 - Serial/HID tests cover loopback and device inventory, not hardware transmit/receive acceptance. GPU training, code signing, malicious-code OS sandboxing, and another clean Windows machine were not tested.
 
+## 2026-10-09 最终收口验证
+
+- `& .\run_tests.ps1 -q`: exit `0`; 56 tests passed, 1 environment-dependent test skipped, total `97.211` seconds (`cache/logs/full-tests-20261009-final.txt`). This includes editor fallback operations, project lifecycle/menu contracts, plugin install/repeat-install/uninstall/upgrade/rollback, Python/JavaScript/TypeScript/中文源码, build cache, UI, flow, vision and child-host lifecycle gates.
+- `runtime\dev\Scripts\python.exe -B tools\freeze_runtime.py --profile node`: exit `0`, `60.093` seconds. The basic/vision/node manifests were compared against the current source fingerprints and all matched.
+- `runtime\dev\Scripts\python.exe -B tools\freeze_ide.py`: exit `0`, `62.047` seconds; final delivery is `build\PCIDE\PCIDE.exe` with the complete sibling `build\PCIDE\_internal` directory.
+- Final frozen smoke commands all exit `0`: `--smoke`, `--ui-smoke --editor native`, and default `--ui-smoke`. Reports are `cache/logs/frozen-ide-smoke-r2.json`, `cache/logs/frozen-ui-native-r2.json`, and `cache/logs/frozen-ui-auto-r2.json`; the default restricted-token backend is `native` with `editor_ready: true`, avoiding Chromium/Mojo popups. Screenshots are `cache/logs/frozen-ui-native-r2.png` and `cache/logs/frozen-ui-auto-r2.png`.
+- `runtime\dev\Scripts\python.exe -B tools\deliver_examples.py`: exit `0`; standalone customer EXEs for HelloAutomation, JavaScriptDemo, and TypeScriptDemo ran without the development Python. Latest first/cached timings are respectively `3.231/1.133`, `1.689/1.390`, and `1.587/1.393` seconds. An isolated measurement after the packaging optimization recorded first/incremental/unchanged as `2.398/2.226/1.114` seconds.
+- `runtime\dev\Scripts\python.exe -B tools\verify_release.py`: exit `0` in `72.685` seconds; `cache/logs/frozen-release.json` reports `ok: true`, `temporary_workspace_removed: true`, five isolated language/vision/plugin projects, source/SDK-free customer payloads, and reaped native/cancel/disconnect/invalid/timeout/crash workers. The UI evidence records `ui_editor: native`, `ui_monaco: false` for this restricted host; supported desktops may use Monaco.
+- Source entry smoke (`src/pcide/main.py --smoke` and `--ui-smoke --editor native`) exited `0`; an isolated `.zhxb` source run and standalone customer EXE also exited `0` (`cache/logs/zhxb-source-smoke-final.txt`, `cache/logs/zhxb-exe-smoke-final-r2.txt`).
+- The final native UI smoke was additionally attempted through the Computer Use bridge, but this session exposed browser controls only and returned no native-app inventory. Therefore the verifiable UI evidence is the executable's own screenshot-backed Qt smoke, not a claim of external accessibility automation.
+
 ## 2026-10-07 中文化收口
 - 修改范围：主界面、运行窗口、视觉面板、编辑器提示、模板与示例项目。
 - 验证：run_tests.ps1 29 项通过；verify_release.py 输出 ok=true。
@@ -101,3 +112,24 @@ All commands below ran from `F:\PC端软件` with the project development enviro
 - Boundaries unchanged: Android ART/device, HID hardware, GPU training, code signing, and another clean Windows machine remain unverified.
 - 最终回归补充：`& .\run_tests.ps1 -q` exit `0`，41 tests passed in 90.636 seconds；新增用例覆盖控件箱四组、设计区选中后属性页切换、宽度与文本焦点提交。
 - 交付目录复核：从 `outputs` 启动 `PCIDE.exe`，`--smoke` 和 `--ui-smoke` 均由 `Start-Process -Wait` 返回 exit `0`，报告资源路径均为 `outputs\\_internal`。
+
+## 2026-10-08 Qt WebEngine 弹窗收口
+
+- 根因：在当前受限 Windows token 中，Qt WebEngine/Chromium 创建 Mojo 命名管道返回 `拒绝访问 (0x5)`，进程在页面初始化前触发 `FATAL:named-platform-channel-pipe` 弹窗。
+- 修复：`src/pcide/ui/editor.py` 在构造 `QWebEngineProfile` 之前识别受限宿主并切换到原生 `QPlainTextEdit`；`--editor native` 可显式选择回退，`--editor monaco` 仅在确认宿主支持 WebEngine 时启用 Monaco。
+- 源码验证：`src/pcide/main.py --ui-smoke --editor native` 退出 `0`，报告 `editor_ready: true`；`tests.test_contracts` 与 `tests.test_ui` 共 23 项定向测试退出 `0`。
+- 冻结验证：`build\\PCIDE\\PCIDE.exe --smoke`、`--ui-smoke --editor native` 和默认 `--ui-smoke` 均退出 `0`；冻结报告分别为 `cache/logs/frozen-closeout-smoke.json`、`cache/logs/frozen-closeout-ui.json` 和 `cache/logs/frozen-closeout-ui-auto.json`。
+- 当前环境的完整门禁仍受屏幕抓取失败与 PyInstaller 单文件 `_MEI` 目录 ACL 限制；这些是测试宿主限制，不是源码启动错误。
+
+## 2026-10-09 Monaco 空白回归修复
+
+- 用户截图中的实际错误为 `Uncaught SyntaxError: Invalid regular expression`：`src/pcide/ui/editor.html` Python 投影正则使用 `\#`，在带 `u` 标志的 JavaScript 正则中属于非法 identity escape，页面脚本因此在创建 Monaco 模型前终止。
+- 修复为未转义的 `#`，并加入 `tests.test_ui.UiTests.test_editor_python_projection_regex_is_unicode_safe`，防止该错误回归。
+- `runtime/node/node.exe` 对源码和冻结版内联脚本均返回语法检查成功；源码 `--smoke`、冻结版 `--smoke`、源码/冻结版 `--ui-smoke --editor native` 均返回 exit `0`，报告中的 `editor_ready` 为 `true`。
+- 已重建交付文件：`build\PCIDE\PCIDE.exe` 与同级完整 `build\PCIDE\_internal`。在当前受限 token 中强制 `--editor monaco` 仍会触发 Qt Chromium Mojo 权限错误，因此默认后端继续自动回退原生编辑器；这与本次 JavaScript 正则修复是两个独立问题。
+
+## 2026-10-09 子程序信息区重叠修复
+
+- 根因：`renderRoutines()` 用零基源码数组索引作为 Monaco 一基 `afterLineNumber`，元数据 view zone 被放在子程序声明前；固定高度又偏小，表格可能继续压到代码行。
+- 修复：`src/pcide/ui/editor.html` 使用 `afterLineNumber:index+1`，并为表格边框、内边距和参数行预留高度；`tests.test_ui.UiTests.test_editor_routine_zone_is_after_declaration` 固定该布局契约。
+- `runtime/node/node.exe` 源码内联脚本语法检查成功；冻结版 `--smoke` 与 `--ui-smoke --editor native` 均 exit `0`，`editor_ready: true`。当前受限 token 仍不能用真实 Chromium 做视觉截图，故 Monaco 视觉位置以代码契约和可用桌面环境验收为准。

@@ -2,12 +2,30 @@
 
 - `src/pcide/main.py`: launch, `--smoke`, `--ui-smoke`, Qt IDE entry, and project build smoke.
 - `src/pcide/core`: project/form/flow schemas, bounded child process runner, Windows pipe protocol, plugin registry, vision adapters, and incremental builder.
+- `src/pcide/core/platform.py`: versioned capability contract for database/API/script/AI/game/compiler/runtime/agent providers.
+- `src/pcide/core/product.py`: product subsystem catalog and capability resolution shared by IDE panels and child hosts.
+- `src/pcide/core/agent.py`: provider-neutral AI coding-agent session, tool contract, approval gate, bounded plan and workspace guard.
+- `src/pcide/core/agent_client.py`: OpenAI-compatible/DeepSeek tool-calls HTTP client with bounded payloads and responses.
+- `src/pcide/core/agent_tools.py`: bounded project listing, search, read, write, patch and verification tools.
+- `src/pcide/ui/agent_dialog.py`: project-scoped AI programming assistant UI with one-session credentials and explicit write approval.
+- `src/pcide/core/compiler.py`: Chinese source lexer/parser/IR and Python runtime emitter.
+- `src/pcide/core/database.py`: versioned database schema validation, SQLite creation and CRUD generation.
+- `src/pcide/core/api_center.py`: HTTP API endpoint contract and client code generation.
+- `src/pcide/core/ai_runtime.py`: model/provider/session contract for ONNX/OCR/detection pipelines.
+- `src/pcide/core/game_sdk.py`: renderer-neutral scene/camera/entity contract.
+- `src/pcide/core/unity.py`: Unity project detection, scene inspection, MonoBehaviour bridge generation, and explicit Assets sync.
+- `src/pcide/core/agent_roles.py`: architect/code/UI/database/model/test Agent role catalog.
+- `src/pcide/core/plugin_market.py`: offline plugin catalog validation and package hash gate.
+- `src/pcide/ui/editor.py`: Monaco editor with a native Qt fallback for Windows environments where Chromium Mojo IPC cannot create its named pipe; the bundled projection script is syntax-checked, and routine metadata view zones are positioned after their declarations so tables do not overlap source lines.
+- `docs/规范/platform.md`: platform capability/provider contract and lifecycle stages.
 - `src/hosts`: isolated native/.NET/Android host sources; contracts are in `docs/规范`.
 - `third_party/monaco`: reviewed Microsoft editor distribution used by the Qt WebEngine editor.
 - `tests`: core, automation, DEX, Qt/Monaco, and frozen build gates; final run is in `cache/logs/tests-full-release.log`.
 - `tools/freeze_runtime.py`, `tools/freeze_ide.py`: reproducible local runtime and IDE freezes; final logs are in `cache/logs`.
-- `tools/verify_release.py`: isolated final frozen IDE/customer/worker lifecycle gate; report is `cache/logs/frozen-release.json`.
+- `tools/verify_release.py`: isolated final frozen IDE/customer/worker lifecycle gate; report is `cache/logs/frozen-release.json` and accepts the bounded native editor fallback when WebEngine cannot initialize.
 - `tools/deliver_examples.py`: example customer EXEs and cache/build timing report in `cache/logs/delivery.json`.
+- `src/pcide/core/archive_bundle.py`: standalone payload archive; high-density binary files stream without zlib compression and packaging policy is fingerprinted by `core/builder.py`.
+- `cache/logs/full-tests-20261009-final.txt`, `cache/logs/delivery-examples-20261008-r2.txt`, `cache/logs/verify-release-20261009-final.txt`: latest regression, build timing, and frozen release evidence.
 - `architecture.md`: directory/data/entry chains and delivery boundaries.
 - `archive/verification.md`: commands, exit status, artifact evidence and limitations.
 - [PC Module Index](平台/pc.md)

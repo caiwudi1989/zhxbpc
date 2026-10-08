@@ -6,12 +6,33 @@ import struct
 from pathlib import Path
 
 
+_ALREADY_COMPRESSED = {".7z", ".avi", ".bmp", ".dll", ".exe", ".gif", ".gz", ".ico",
+                      ".jpeg", ".jpg", ".mp3", ".mp4", ".onnx", ".pdb", ".png", ".pyd",
+                      ".so", ".tar", ".tif", ".tiff", ".webp", ".whl", ".zip"}
+
+
+def _compress_payload(path: Path) -> bool:
+    """Compress small text/bytecode files, but stream binary payloads as-is.
+
+    Native/.NET libraries and model/media files are already dense. Passing
+    those through zlib made every incremental standalone build spend several
+    seconds in compression with negligible size savings. Small manifests and
+    bytecode still benefit from compression.
+    """
+    try:
+        if path.suffix.lower() in _ALREADY_COMPRESSED:
+            return False
+        return path.stat().st_size <= 512 * 1024
+    except OSError:
+        return False
+
+
 def embed_payload(base_exe, payload_root, output, scratch):
     from PyInstaller.archive.readers import CArchiveReader
     from PyInstaller.archive.writers import CArchiveWriter
     base = CArchiveReader(str(base_exe))
     extra_path = Path(scratch) / "payload.pkg"
-    entries = [(p.relative_to(payload_root).as_posix(), str(p), True, "x")
+    entries = [(p.relative_to(payload_root).as_posix(), str(p), _compress_payload(p), "x")
                for p in sorted(Path(payload_root).rglob("*"))
                if p.is_file() and (p.relative_to(payload_root).parts[0] == "payload" or p.name == "package.json")]
     CArchiveWriter(str(extra_path), entries, "python312.dll")

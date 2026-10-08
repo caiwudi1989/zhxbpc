@@ -7,7 +7,7 @@
 - Projects: `projects/<name>`; source `src`, form `ui/main.form.json`, flow `flows/main.flow.json`, manifest `.pcide/project.json`.
 - Verification: `run_tests.ps1`; full command evidence and limits in `archive/verification.md`.
 
-For a frozen installation, `PCIDE.exe --smoke --project <project> --report <json>` checks the script, flow, Monaco assets, and UI updates. Add `--build` to create the standalone customer EXE through the selected runtime profile. `--ui-smoke --screenshot <png> --report <json>` checks the frozen Qt/Monaco surface. These checks use owned child processes with bounded output and finite project timeouts.
+For a frozen installation, `PCIDE.exe --smoke --project <project> --report <json>` checks the script, flow, Monaco assets, and UI updates. Add `--build` to create the standalone customer EXE through the selected runtime profile. `--ui-smoke --screenshot <png> --report <json>` checks the frozen Qt editor surface; `--editor auto` prefers Monaco and automatically uses the native Qt editor when a restricted Windows token cannot initialize Chromium/Mojo. These checks use owned child processes with bounded output and finite project timeouts.
 
 ## Project Configuration
 
@@ -26,7 +26,7 @@ The project tree exposes `project.json`; changes are validated when saved. Runni
 
 - Runtime form events call script functions and update controls through `ui.set`; scripts can open or close an independent form with `ui.open(window_id)` and `ui.close(window_id)`. Python imports `pcide.runtime_api`; JS/TS requires `pcide`. Window IDs accept the stable form path key, filename, or unique form ID/title.
 - Python uses bdb; JS/TS uses the Node inspector. Breakpoints, stepping, locals and call stacks belong to one process/session. Session records are stored under `cache/sessions`.
-- Customer build creates a standalone EXE in `build/artifacts/<project>` using the precompiled runtime. `BuildManager.build(project, "directory")` creates a diagnostic directory instead. Customer payload contains bytecode and selected resources; basic builds exclude development environment and source.
+- Customer build creates a standalone EXE in `build/artifacts/<project>` using the precompiled runtime. `BuildManager.build(project, "directory")` creates a diagnostic directory instead. Customer payload contains bytecode and selected resources; basic builds exclude development environment, SDK and source. The archive streams dense DLL/model/media files without wasteful compression while still compressing small manifests and bytecode.
 - Project Python libraries must be provided by a selected prebuilt profile or bundled project code. Arbitrary pip dependencies and arbitrary Node packages are not automatically packaged.
 - Each `ui/**/*.form.json` is an independent window. The window contract includes maximize/minimize/resizable flags, fixed or bounded dimensions, anchor/dock policy, and auto-fill. `Project.window_paths()` lists windows with `ui/main.form.json` first; the runtime manager opens and closes them by stable path ID.
 - `.pcide/data.json` stores variables with `global`, `window`, `module`, or `local` scope, constants, and DLL/SDK/API records with parameters, return type, calling convention, permissions, and dependencies. Chinese `label` values are paired with ASCII `id` values; `core.data.generate_code()` emits Python, JavaScript, or TypeScript declarations and API stubs.

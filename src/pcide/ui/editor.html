@@ -43,7 +43,9 @@ require(['vs/editor/editor.main'],()=>{
   let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[];
   function projectText(text,reverse=false){
    const map=reverse?Object.fromEntries(Object.entries(words).map(([a,b])=>[b,a])):words;
-   const tokens=currentLanguage==='python'?/\#.*?$|'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[\p{L}_][\p{L}\p{N}_]*/gmu:
+   // In a Unicode JavaScript regexp, `\#` is an invalid identity escape.
+   // Keep the hash literal unescaped so Chromium can parse the editor bundle.
+   const tokens=currentLanguage==='python'?/#.*?$|'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[\p{L}_][\p{L}\p{N}_]*/gmu:
     /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[\p{L}_][\p{L}\p{N}_]*/gmu;
    return text.replace(tokens,token=>map[token]||token);
   }
@@ -64,8 +66,13 @@ require(['vs/editor/editor.main'],()=>{
      const params=match[2].split(',').map(value=>value.trim()).filter(Boolean);
      if(params.length){const pt=document.createElement('table'),ph=pt.insertRow();['参数名','类型','默认值','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;ph.appendChild(th);});
       params.forEach(param=>{const r=pt.insertRow(),parts=param.split('=');const names=parts[0].split(':');[names[0],names[1]||'自动',parts[1]||'', ''].forEach(text=>r.insertCell().textContent=text);});node.appendChild(pt);}
-     const height=58+(params.length?28*(params.length+1):0);
-     zones.push(accessor.addZone({afterLineNumber:index,heightInPx:height,domNode:node,suppressMouseDown:false}));
+      // A view zone belongs below the declaration it describes.  `index` is
+      // zero-based while Monaco's `afterLineNumber` is one-based; using the
+      // former put the metadata over the declaration and its first statement.
+      // Reserve the padding, borders, and both table rows so the body cannot
+      // paint through the metadata when the zone is laid out.
+      const height=74+(params.length?32+28*params.length:0);
+      zones.push(accessor.addZone({afterLineNumber:index+1,heightInPx:height,domNode:node,suppressMouseDown:false}));
     });
    });
   }
@@ -82,7 +89,7 @@ require(['vs/editor/editor.main'],()=>{
     documentation:item.documentation||'',range}));
    return {suggestions};
   }};}
-  ['python','javascript','typescript','json','csharp','cpp','plaintext'].forEach(language=>
+  ['python','javascript','typescript','json','csharp','cpp','plaintext','zhxb'].forEach(language=>
    providers.push(monaco.languages.registerCompletionItemProvider(language,completionProvider())));
   monaco.languages.registerSignatureHelpProvider(['python','javascript','typescript'],{
    signatureHelpTriggerCharacters:['(', ','],signatureHelpRetriggerCharacters:[','],
@@ -108,6 +115,9 @@ require(['vs/editor/editor.main'],()=>{
    insertText(text){editor.executeEdits('pcide',[{range:editor.getSelection(),text:chinese?projectText(text):text,forceMoveMarkers:true}]);editor.focus();},
    triggerSuggest(){editor.trigger('pcide','editor.action.triggerSuggest',{});},
    toggleFold(){editor.trigger('pcide','editor.action.toggleFold',{});},
+   find(replace){editor.getAction(replace?'editor.action.startFindReplaceAction':'actions.find')?.run();},
+   undo(){editor.trigger('pcide','undo',{});},
+   redo(){editor.trigger('pcide','redo',{});},
    formatDocument(){editor.getAction('editor.action.formatDocument')?.run();},
    breakpoints(lines){decorations=editor.deltaDecorations(decorations,lines.map(line=>({range:new monaco.Range(line,1,line,1),options:{glyphMarginClassName:'pcide-breakpoint'}})));},
    dispose(){editor.setModel(null);for(const m of models.values())m.dispose();models.clear();path='';}

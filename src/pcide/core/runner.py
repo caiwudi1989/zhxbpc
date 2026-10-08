@@ -68,7 +68,7 @@ class ScriptRunner:
         log_exceeded = threading.Event()
         code = 1
         try:
-            if project.manifest["language"] == "python":
+            if project.manifest["language"] in {"python", "zhxb"}:
                 command = host_command("worker", "vision" if "vision" in project.manifest.get("modules", []) else "basic")
             else:
                 node = node_runtime()

@@ -1,7 +1,13 @@
 """Small, deterministic API exposed to generated Python projects."""
 from __future__ import annotations
 
+import json
+import sqlite3
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
 from typing import Any
 
 
@@ -42,6 +48,67 @@ class _UiProxy:
 
 
 ui = _UiProxy()
+
+class _DatabaseProxy:
+    def connect(self, path: str = "database/app.sqlite"):
+        raw = str(path or "").replace("\\", "/")
+        target = Path(raw)
+        if target.is_absolute() or ".." in target.parts or not raw or len(raw) > 260 or "\x00" in raw or ":" in raw:
+            raise ValueError("数据库路径必须是项目内相对路径")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return sqlite3.connect(str(target), timeout=10)
+    def query(self, connection, sql: str, params=()):
+        if not isinstance(sql, str) or len(sql) > 100_000:
+            raise ValueError("SQL 过长")
+        cursor = connection.execute(sql, tuple(params))
+        rows = cursor.fetchmany(10_000)
+        return [dict(row) if isinstance(row, sqlite3.Row) else tuple(row) for row in rows]
+    def execute(self, connection, sql: str, params=()):
+        if not isinstance(sql, str) or len(sql) > 100_000:
+            raise ValueError("SQL 过长")
+        cursor = connection.execute(sql, tuple(params)); connection.commit()
+        return {"rowcount": cursor.rowcount, "lastrowid": cursor.lastrowid}
+
+db = _DatabaseProxy()
+
+class _NetworkProxy:
+    def request(self, url: str, method: str = "GET", body=None, timeout: float = 30):
+        parsed = urllib.parse.urlparse(str(url))
+        method = str(method).upper()
+        if parsed.scheme not in {"http", "https"} or parsed.hostname is None or parsed.username or parsed.password or method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            raise ValueError("网络请求只允许 HTTP/HTTPS")
+        try:
+            timeout = max(1, min(float(timeout), 60))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("网络请求超时无效") from exc
+        payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        if payload is not None and len(payload) > 4 * 1024 * 1024:
+            raise ValueError("请求体超过 4MB")
+        request = urllib.request.Request(str(url), data=payload, method=method, headers={"Content-Type": "application/json"} if payload else {})
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read(4 * 1024 * 1024 + 1)
+                if len(raw) > 4 * 1024 * 1024:
+                    raise ValueError("响应超过 4MB")
+                text = raw.decode("utf-8", errors="replace")
+                try: content = json.loads(text)
+                except ValueError: content = text
+                return {"status": response.status, "data": content}
+        except urllib.error.HTTPError as exc:
+            return {"status": exc.code, "error": str(exc)}
+
+network = _NetworkProxy()
+
+class _GameProxy:
+    def emit(self, event: str, **payload):
+        if not isinstance(event, str) or not event.strip() or len(event) > 128:
+            raise ValueError("游戏事件名非法")
+        message = {"kind": "game.event", "event": event, "payload": payload}
+        if ui.transport:
+            ui.transport(message.copy())
+        return message
+
+game = _GameProxy()
 
 
 def ocr_mock(image: Any, text: str = "OK") -> dict[str, Any]:

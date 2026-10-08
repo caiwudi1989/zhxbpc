@@ -17,6 +17,9 @@ from .package import verify_package
 
 FORBIDDEN_SOURCE = {".py", ".pyi", ".pyx", ".c", ".cpp", ".h", ".java", ".cs", ".ts", ".js", ".cjs", ".mjs"}
 FORBIDDEN_PARTS = {"site-packages", "pip", "pytest", ".venv", "sdk", "downloads", "__pycache__"}
+# Bump when the standalone archive layout/compression policy changes so an
+# existing artifact cannot be mistaken for one produced by the new packager.
+PACKAGING_FORMAT_VERSION = 2
 
 
 class BuildError(RuntimeError):
@@ -37,7 +40,7 @@ def runtime_fingerprint(paths, profile="basic"):
         directory = "project-runtime" if profile == "basic" else f"project-runtime-{profile}"
         manifest = read_json(paths.resources / "runtime/prebuilt" / directory / "runtime.json", {})
         return manifest.get("fingerprint", "")
-    runtime_names = ("paths.py", "project.py", "runner.py", "processes.py", "worker.py", "plugins.py",
+    runtime_names = ("paths.py", "project.py", "runner.py", "processes.py", "worker.py", "plugins.py", "compiler.py",
                      "plugin_host.py", "runtime_api.py", "package.py", "automation.py", "dex_bridge.py", "flow.py")
     if profile == "vision":
         runtime_names += ("vision.py", "label_io.py")
@@ -67,7 +70,7 @@ class BuildManager:
         modules = set(project.manifest.get("modules", []))
         if modules - {"vision"}:
             raise BuildError(f"unknown prebuilt runtime modules: {sorted(modules - {'vision'})}")
-        profile = "node" if project.manifest["language"] != "python" else "vision" if "vision" in modules else "basic"
+        profile = "node" if project.manifest["language"] not in {"python", "zhxb"} else "vision" if "vision" in modules else "basic"
         if profile == "node" and modules:
             raise BuildError("Node runtime does not support the Python vision module")
         directory = "project-runtime" if profile == "basic" else f"project-runtime-{profile}"
@@ -83,7 +86,8 @@ class BuildManager:
             raise BuildError("precompiled runtime files failed hash verification")
         inputs = project.input_files_for_build()
         identities = {p.relative_to(project.root).as_posix(): sha256_file(p) for p in inputs}
-        stamp = {"inputs": identities, "runtime": expected, "mode": mode}
+        stamp = {"inputs": identities, "runtime": expected, "mode": mode,
+                 "packaging": PACKAGING_FORMAT_VERSION}
         fingerprint = hashlib.sha256(json.dumps(stamp, sort_keys=True).encode()).hexdigest()
         target = self.paths.artifacts / project.root.name
         previous = read_json(target / "build.json", {})
@@ -119,12 +123,18 @@ class BuildManager:
             for source in inputs:
                 relative = source.relative_to(project.root)
                 digest = identities[relative.as_posix()]
-                if source.suffix == ".py":
+                if source.suffix in {".py", ".zhxb"}:
                     destination = payload / relative.with_suffix(".pyc")
                     identity = hashlib.sha256((relative.as_posix() + digest).encode()).hexdigest()
                     bytecode = cache / (identity + "-" + sys.implementation.cache_tag + ".pyc")
                     if not valid_bytecode_cache(bytecode):
-                        py_compile.compile(str(source), cfile=str(bytecode), dfile=relative.as_posix(), doraise=True)
+                        if source.suffix == ".zhxb":
+                            from .compiler import emit_python
+                            generated = cache / (identity + ".generated.py")
+                            generated.write_text(emit_python(source.read_text(encoding="utf-8")), encoding="utf-8")
+                            py_compile.compile(str(generated), cfile=str(bytecode), dfile=relative.as_posix(), doraise=True)
+                        else:
+                            py_compile.compile(str(source), cfile=str(bytecode), dfile=relative.as_posix(), doraise=True)
                         record_bytecode_cache(bytecode)
                     material = bytecode
                 elif source.suffix.lower() in {".js", ".ts"} and source.is_relative_to(project.root / "src"):
@@ -149,7 +159,7 @@ class BuildManager:
                     changed.append(relative.as_posix())
                 outputs[destination.relative_to(payload).as_posix()] = True
             manifest = copy_manifest(project)
-            manifest["entry"] = Path(manifest["entry"]).with_suffix(".pyc" if manifest["language"] == "python" else ".jsc").as_posix()
+            manifest["entry"] = Path(manifest["entry"]).with_suffix(".pyc" if manifest["language"] in {"python", "zhxb"} else ".jsc").as_posix()
             atomic_write_json(payload / ".pcide" / "project.json", manifest)
             for plugin_path in (payload / "plugins").glob("*/plugin.json") if (payload / "plugins").exists() else []:
                 plugin = read_json(plugin_path)

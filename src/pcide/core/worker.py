@@ -150,6 +150,9 @@ class Worker:
             if entry.suffix == ".pyc":
                 loader = importlib.machinery.SourcelessFileLoader("__main__", str(entry))
                 code = loader.get_code("__main__")
+            elif self.project.manifest.get("language") == "zhxb":
+                from .compiler import emit_python
+                code = compile(emit_python(entry.read_text(encoding="utf-8")), str(entry), "exec")
             else:
                 code = compile(entry.read_text(encoding="utf-8"), str(entry), "exec")
             if self.request.get("debug"):
@@ -161,6 +164,8 @@ class Worker:
             if self.cancel.is_set():
                 return 1 if self.input_error else 130
             self.send("ready")
+            if self.project.manifest.get("language") == "zhxb":
+                self.invoke("__zhxb_entrypoint__")
             for handler in self.request.get("events", []):
                 self.invoke(handler)
             if self.request.get("keep_alive"):

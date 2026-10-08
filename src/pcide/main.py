@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLabel, QMessageBox, QPlainTextEdit,
     QSplitter, QStyle, QTabWidget, QToolBar, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QMainWindow, QMenu,
-    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit)
+    QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QCheckBox)
 
 from pcide.core.paths import IDE_VERSION, Paths, atomic_write_json, read_json
 from pcide.core.project import Project, ProjectError, validate_form, valid_file_name, valid_name
@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         self.busy = False
         self.token = str(self.project.root)
         self.closing = False
+        self._project_closed = False
         self.dirty = False
         self.current_control = ""
         self.breakpoints = {}
@@ -105,6 +106,7 @@ class MainWindow(QMainWindow):
             self._action("调试", self.debug_script, style.SP_ComputerIcon, "F4"),
             self._action("停止", self.stop_script, style.SP_MediaStop, "Shift+F5"),
             self._action("预览", self.preview, style.SP_DesktopIcon),
+            self._action("AI助手", self.open_ai_assistant, style.SP_DialogHelpButton, "Ctrl+Alt+A"),
             self._action("构建可执行文件", self.build, style.SP_DriveHDIcon),
         ]
         for action in actions:
@@ -112,6 +114,19 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("项目")
         for action in actions[:3]:
             file_menu.addAction(action)
+        file_menu.addAction(self._action("项目另存为", self.save_project_as, shortcut="Ctrl+Shift+S"))
+        file_menu.addAction(self._action("导入项目", self.import_project))
+        file_menu.addAction(self._action("重命名项目", self.rename_project))
+        file_menu.addAction(self._action("关闭项目", self.close_project, shortcut="Ctrl+W"))
+        file_menu.addAction(self._action("删除项目", self.delete_project))
+        code_menu = self.menuBar().addMenu("代码")
+        code_menu.addAction(self._action("撤销", self.editor_undo, shortcut="Ctrl+Z"))
+        code_menu.addAction(self._action("重做", self.editor_redo, shortcut="Ctrl+Y"))
+        code_menu.addAction(self._action("查找", lambda: self.editor.show_find(False), shortcut="Ctrl+F"))
+        code_menu.addAction(self._action("查找替换", lambda: self.editor.show_find(True), shortcut="Ctrl+H"))
+        code_menu.addAction(self._action("替换当前文件", self.replace_in_editor))
+        code_menu.addAction(self._action("保存当前文件为", self.save_editor_as))
+        code_menu.addAction(self._action("跳转到行", self.goto_editor_line, shortcut="Ctrl+G"))
         edit_menu = self.menuBar().addMenu("设计")
         for name, callback, shortcut in [
             ("撤销", lambda: self.designer.undo(), "Ctrl+Z"),
@@ -136,8 +151,10 @@ class MainWindow(QMainWindow):
         for title, command, shortcut in (("继续", "continue", "F8"), ("单步进入", "step", "F11"),
                                          ("单步跳过", "next", "F10"), ("单步跳出", "out", "Shift+F11")):
             debug_menu.addAction(self._action(title, lambda _, cmd=command: self.debug_command(cmd), shortcut=shortcut))
+        debug_menu.addAction(self._action("切换断点", lambda: self.editor.toggle_breakpoint_at_cursor(), shortcut="F9"))
         debug_menu.addAction(self._action("回放最近会话", self.replay))
         tools = self.menuBar().addMenu("扩展")
+        tools.addAction(self._action("安装插件包", self.install_plugin_archive))
         tools.addAction(self._action("示例插件", self.load_plugins))
         tools.addAction(self._action("卸载插件", self.unload_plugins))
         tools.addAction(self._action("DEX 浏览", self.browse_dex))
@@ -146,6 +163,13 @@ class MainWindow(QMainWindow):
         environment_menu = self.menuBar().addMenu("环境")
         environment_menu.addAction(self._action("项目环境", self.show_environment))
         environment_menu.addAction(self._action("重新扫描支持库", self._refresh_support_library))
+        platform_menu = self.menuBar().addMenu("平台")
+        platform_menu.addAction(self._action("平台能力", self.show_platform_capabilities))
+        platform_menu.addAction(self._action("数据库设计器", self.open_database_designer))
+        platform_menu.addAction(self._action("API 中心", self.open_api_center))
+        platform_menu.addAction(self._action("接入 Unity 工程", self.connect_unity_project))
+        ai_menu = self.menuBar().addMenu("AI")
+        ai_menu.addAction(self._action("AI 编程助手", self.open_ai_assistant))
         self.window_menu = self.menuBar().addMenu("窗口")
         self.window_menu.addAction(self._action("新建窗口", self.new_window))
         self.window_menu.addAction(self._action("重命名当前窗口", self.rename_current_window))
@@ -291,6 +315,9 @@ class MainWindow(QMainWindow):
             self._close_code_tab(index)
 
     def _load_project(self):
+        self._project_closed = False
+        self.workspace_tabs.setEnabled(True)
+        self.tabs.setEnabled(True)
         self.editor.close_project()
         self.current_form_path = self.current_form_path if self.current_form_path.exists() else self.project.form_path
         self.designer.load(validate_form(read_json(self.current_form_path, self.project.load_form())))
@@ -477,15 +504,63 @@ class MainWindow(QMainWindow):
 
     def trigger_completion(self):
         if self.editor.loaded:
-            self.editor.page.runJavaScript("pcide.triggerSuggest()")
+            if self.editor._fallback:
+                self.editor.trigger_completion()
+            else:
+                self.editor.page.runJavaScript("pcide.triggerSuggest()")
 
     def toggle_editor_fold(self):
         if self.editor.loaded:
-            self.editor.page.runJavaScript("pcide.toggleFold()")
+            if not self.editor._fallback:
+                self.editor.page.runJavaScript("pcide.toggleFold()")
 
     def format_editor(self):
         if self.editor.loaded:
-            self.editor.page.runJavaScript("pcide.formatDocument()")
+            self.editor.format_document()
+
+    def editor_undo(self):
+        self.editor.undo()
+
+    def editor_redo(self):
+        self.editor.redo()
+
+    def replace_in_editor(self):
+        if not self.editor.path:
+            return
+        search, ok = QInputDialog.getText(self, "替换文本", "查找内容")
+        if not ok or not search:
+            return
+        replacement, ok = QInputDialog.getText(self, "替换文本", "替换为")
+        if not ok:
+            return
+        count = self.editor.replace(search, replacement, replace_all=True)
+        self.statusBar().showMessage(f"已替换 {count} 处")
+
+    def save_editor_as(self):
+        if not self.editor.path:
+            return
+        target, _ = QFileDialog.getSaveFileName(self, "保存当前文件为", str(Path(self.editor.path)), "所有文件 (*)")
+        if not target:
+            return
+        target = Path(target).resolve()
+        try:
+            if not target.is_relative_to(self.project.root.resolve()) or target.is_dir():
+                raise ProjectError("只能保存到当前项目目录")
+            if target == self.project.ide_dir / "project.json":
+                raise ProjectError("不能覆盖项目配置")
+            source_path = self.editor.path
+            def save():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(self.editor.documents[source_path], encoding="utf-8", newline="\n")
+                self._refresh_after_file_change(file_path=target)
+            self.after_save(save)
+        except (OSError, ProjectError) as exc:
+            self.log(f"无法另存文件：{exc}")
+
+    def goto_editor_line(self):
+        line, ok = QInputDialog.getInt(self, "跳转到行", "行号", 1, 1, 1000000)
+        if ok:
+            self.editor.goto(line)
 
     def toggle_chinese_editor(self):
         if self.editor.loaded:
@@ -497,9 +572,9 @@ class MainWindow(QMainWindow):
         dialog.setMinimumWidth(520)
         form = QFormLayout(dialog)
         language = QComboBox(dialog)
-        language.addItems(["Python", "JavaScript / Node.js", "TypeScript / Node.js"])
+        language.addItems(["Python", "JavaScript / Node.js", "TypeScript / Node.js", "中文源码（zhxb）"])
         current = self.project.manifest.get("language", "python")
-        language.setCurrentIndex({"python": 0, "javascript": 1, "typescript": 2}.get(current, 0))
+        language.setCurrentIndex({"python": 0, "javascript": 1, "typescript": 2, "zhxb": 3}.get(current, 0))
         python_path = QLineEdit(str(self.paths.root / "runtime" / "dev" / "python.exe"))
         node_path = QLineEdit(str(self.paths.root / "runtime" / "dev" / "node.exe"))
         form.addRow("项目语言", language)
@@ -512,11 +587,81 @@ class MainWindow(QMainWindow):
         form.addRow(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.project.manifest["environment"] = {
-                "language": language.currentText(),
+                "language": {"Python": "python", "JavaScript / Node.js": "javascript", "TypeScript / Node.js": "typescript", "中文源码（zhxb）": "zhxb"}[language.currentText()],
                 "python": python_path.text().strip(),
                 "node": node_path.text().strip(),
             }
             self.after_save(lambda: self.statusBar().showMessage("项目环境已保存"))
+
+    def show_platform_capabilities(self):
+        """Edit the versioned, project-local capability switches."""
+        from pcide.core.platform import validate_platform
+        from pcide.core.product import capability_summary
+        dialog = QDialog(self)
+        dialog.setWindowTitle("平台能力")
+        dialog.setMinimumWidth(460)
+        form = QFormLayout(dialog)
+        platform = validate_platform(self.project.manifest.get("platform"))
+        labels = {"database": "数据库", "api": "网络与 API", "script": "脚本引擎", "ai": "AI Runtime",
+                  "game": "游戏 SDK", "compiler": "编译器", "agent": "Agent", "runtime": "运行时"}
+        checks = {}
+        for kind, label in labels.items():
+            check = QCheckBox(label, dialog)
+            check.setChecked(platform["capabilities"][kind].get("enabled", False))
+            checks[kind] = check
+            form.addRow(check)
+        summary = capability_summary(platform)
+        form.addRow(QLabel(f"已启用 {summary['enabled']} / {summary['total']} 项能力，已注册 {summary['providers']} 个 provider。"))
+        form.addRow(QLabel("能力只写入 .pcide/project.json；具体 provider 仍在独立进程或模块中运行。"))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            for kind, check in checks.items():
+                platform["capabilities"][kind]["enabled"] = check.isChecked()
+            self.project.manifest["platform"] = validate_platform(platform)
+            self._refresh_support_library()
+            self.after_save(lambda: self.statusBar().showMessage("平台能力已保存"))
+
+    def open_ai_assistant(self):
+        self.after_save(self._open_ai_assistant_saved)
+
+    def _open_ai_assistant_saved(self):
+        from pcide.ui.agent_dialog import AgentDialog
+        dialog = AgentDialog(self.project, self)
+        dialog.exec()
+        self.project = Project.open(self.project.root)
+        self._load_project()
+
+    def connect_unity_project(self):
+        from pcide.core.unity import bridge_manifest, inspect_project
+        folder = QFileDialog.getExistingDirectory(self, "选择 Unity 工程", str(self.project.root))
+        if not folder:
+            return
+        try:
+            unity = inspect_project(folder)
+            bridge = bridge_manifest(unity)
+            bridge["project_root"] = str(unity.root)
+            atomic_write_json(self.project.root / "game" / "unity_bridge.json", bridge)
+            self.log(f"Unity 工程已接入：{unity.root}（{unity.version}）")
+            self._load_project()
+        except Exception as exc:
+            QMessageBox.warning(self, "Unity 接入失败", str(exc))
+
+    def open_database_designer(self):
+        from pcide.ui.platform_dialogs import DatabaseDesignerDialog
+        dialog = DatabaseDesignerDialog(self.project, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._load_project()
+            self.statusBar().showMessage("数据库 schema 与 CRUD 已生成")
+
+    def open_api_center(self):
+        from pcide.ui.platform_dialogs import ApiCenterDialog
+        dialog = ApiCenterDialog(self.project, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._load_project()
+            self.statusBar().showMessage("API 合同与客户端代码已生成")
 
     def _populate_project_tree(self, parent, directory):
         if not directory.is_dir():
@@ -893,6 +1038,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"PCIDE | {self.project.manifest['name']} | {IDE_VERSION}")
 
     def after_save(self, function):
+        if getattr(self, "_project_closed", False):
+            try:
+                function()
+            except Exception as exc:
+                self.log(str(exc))
+            return
         def saved():
             try:
                 self._save_now()
@@ -910,6 +1061,7 @@ class MainWindow(QMainWindow):
         self.registry.close()
         from pcide.core.plugins import PluginRegistry
         self.project = project
+        self._project_closed = False
         self.current_form_path = project.form_path
         self.token = str(project.root)
         self.registry = PluginRegistry(project.root, project.manifest.get("permissions", []))
@@ -922,7 +1074,7 @@ class MainWindow(QMainWindow):
         name, ok = QInputDialog.getText(self, "新建项目", "名称", text="MyScript")
         if not ok:
             return
-        language, ok = QInputDialog.getItem(self, "新建项目", "语言", ["python", "javascript", "typescript"], editable=False)
+        language, ok = QInputDialog.getItem(self, "新建项目", "语言", ["python", "javascript", "typescript", "zhxb"], editable=False)
         if ok:
             self.after_save(lambda: self._switch(Project.create(self.paths, name, language)))
 
@@ -932,6 +1084,121 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "打开项目", str(self.paths.projects))
         if folder:
             self.after_save(lambda: self._switch(Project.open(folder)))
+
+    def close_project(self):
+        if self.busy or self._reject_if_running():
+            return
+        def close():
+            self.stop_script()
+            self.runner.wait()
+            self.registry.close()
+            self.editor.close_project()
+            self.project_tree.clear()
+            self.designer.load(validate_form(copy.deepcopy({"version": 1, "form": {"title": "未打开项目", "width": 760, "height": 440, "background": "#ffffff", "events": {}, "window": {}}, "controls": [], "grid": {"enabled": True, "size": 10, "snap": True}})))
+            self.workspace_tabs.setEnabled(False)
+            self.tabs.setEnabled(False)
+            self.setWindowTitle(f"PCIDE | 未打开项目 | {IDE_VERSION}")
+            self.statusBar().showMessage("项目已关闭，请新建或打开项目")
+            self._project_closed = True
+        self.after_save(close)
+
+    def _project_destination(self, title, default_name):
+        target = QFileDialog.getExistingDirectory(self, title, str(self.paths.projects))
+        if not target:
+            return None
+        base = Path(target).resolve()
+        name, ok = QInputDialog.getText(self, title, "项目目录名", text=default_name)
+        if not ok or not name.strip():
+            return None
+        name = name.strip()
+        if not valid_file_name(name):
+            QMessageBox.warning(self, title, "项目目录名包含非法字符")
+            return None
+        destination = (base / name).resolve()
+        if not destination.is_relative_to(self.paths.projects.resolve()):
+            QMessageBox.warning(self, title, "项目必须保存到项目目录")
+            return None
+        if destination.exists():
+            QMessageBox.warning(self, title, "目标项目目录已存在")
+            return None
+        return destination
+
+    def save_project_as(self):
+        if getattr(self, "_project_closed", False):
+            return
+        destination = self._project_destination("项目另存为", self.project.manifest["name"] + "_副本")
+        if not destination:
+            return
+        def save():
+            copied = Project.copy_to(self.project.root, destination)
+            copied.manifest["name"] = destination.name
+            copied.save_manifest()
+            self._switch(copied)
+        self.after_save(save)
+
+    def import_project(self):
+        source = QFileDialog.getExistingDirectory(self, "导入项目", str(self.paths.projects))
+        if not source:
+            return
+        source = Path(source).resolve()
+        try:
+            imported = Project.open(source)
+        except (OSError, ProjectError, ValueError) as exc:
+            QMessageBox.warning(self, "无法导入项目", str(exc))
+            return
+        destination = self._project_destination("导入项目", imported.manifest["name"])
+        if not destination:
+            return
+        def import_now():
+            self._switch(Project.copy_to(source, destination))
+        self.after_save(import_now)
+
+    def rename_project(self):
+        if getattr(self, "_project_closed", False) or self._reject_if_running():
+            return
+        if not self.project.root.is_relative_to(self.paths.projects.resolve()):
+            self.log("当前项目不在工作区项目目录中，不能重命名")
+            return
+        name, ok = QInputDialog.getText(self, "重命名项目", "项目目录名", text=self.project.root.name)
+        if not ok or not name.strip() or not valid_file_name(name.strip()):
+            return
+        target = (self.project.root.parent / name.strip()).resolve()
+        if target.exists():
+            QMessageBox.warning(self, "无法重命名项目", "目标项目目录已存在")
+            return
+        def rename():
+            self.project.root.rename(target)
+            renamed = Project.open(target)
+            renamed.manifest["name"] = target.name
+            renamed.save_manifest()
+            self._switch(renamed)
+        self.after_save(rename)
+
+    def delete_project(self):
+        if getattr(self, "_project_closed", False) or self._reject_if_running():
+            return
+        if not self.project.root.is_relative_to(self.paths.projects.resolve()):
+            self.log("当前项目不在工作区项目目录中，不能删除")
+            return
+        answer = QMessageBox.question(self, "删除项目", f"确定删除项目及全部文件吗？\n{self.project.root.name}",
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                      QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        target = self.project.root
+        def delete():
+            shutil.rmtree(target)
+            self.stop_script()
+            self.runner.wait()
+            self.registry.close()
+            self.editor.close_project()
+            self.project_tree.clear()
+            self.workspace_tabs.setEnabled(False)
+            self.tabs.setEnabled(False)
+            self._project_closed = True
+            self.setWindowTitle(f"PCIDE | 未打开项目 | {IDE_VERSION}")
+            self.statusBar().showMessage("项目已删除")
+        self.after_save(delete)
 
     def open_file(self, item, _column=0):
         path = item.data(0, Qt.ItemDataRole.UserRole)
@@ -954,7 +1221,7 @@ class MainWindow(QMainWindow):
                 self.log(str(exc))
 
     def new_source_file(self):
-        suffix = {"python": ".py", "javascript": ".js", "typescript": ".ts"}.get(self.project.manifest.get("language"), ".txt")
+        suffix = {"python": ".py", "javascript": ".js", "typescript": ".ts", "zhxb": ".zhxb"}.get(self.project.manifest.get("language"), ".txt")
         name, ok = QInputDialog.getText(self, "新建源码文件", "文件名", text="新文件" + suffix)
         if not ok or not name.strip():
             return
@@ -1081,12 +1348,18 @@ class MainWindow(QMainWindow):
             except (KeyError, TypeError) as exc:
                 self.log(f"无法关闭运行窗口: {exc}")
         elif kind == "ui.set" and self.runtime_manager:
-            try:
-                found = self.runtime_manager.update_control(message["id"], message.get("properties", {}), message.get("window"))
-                if not found:
-                    raise ValueError(f"unknown UI control: {message['id']}")
-            except ValueError as exc:
-                self.log(str(exc))
+            # Worker messages are delivered through a queued Qt signal.  A
+            # handler can emit several ``ui.set`` records and then its
+            # ``event.done`` acknowledgement.  Apply the visual update on
+            # the next event-loop turn so the acknowledgement is observed by
+            # callers before the UI settles; this also keeps the message
+            # ordering deterministic for automation and debugger clients.
+            update = {
+                "id": message.get("id"),
+                "properties": message.get("properties", {}),
+                "window": message.get("window"),
+            }
+            QTimer.singleShot(0, lambda update=update: self._apply_runtime_update(update))
         elif kind == "paused":
             self.variables.clear()
             for name, value in message["variables"].items():
@@ -1102,6 +1375,16 @@ class MainWindow(QMainWindow):
     def _runtime_done(self, session, code, error):
         if session == self.runner.session and not self.closing:
             self.log(f"退出 {code}" + (f": {error}" if error else ""))
+
+    def _apply_runtime_update(self, message):
+        if self.closing or not self.runtime_manager:
+            return
+        try:
+            found = self.runtime_manager.update_control(message["id"], message["properties"], message["window"])
+            if not found:
+                raise ValueError(f"unknown UI control: {message['id']}")
+        except (KeyError, TypeError, ValueError) as exc:
+            self.log(str(exc))
 
     def goto_stack(self, item, _column):
         frame = item.data(0, Qt.ItemDataRole.UserRole)
@@ -1150,8 +1433,61 @@ class MainWindow(QMainWindow):
             return result
         self.submit(load)
 
+    def install_plugin_archive(self):
+        if not self.project:
+            return
+        source, _ = QFileDialog.getOpenFileName(self, "安装插件包", "", "PCIDE 插件 (*.pcplugin *.zip)")
+        if not source:
+            return
+        source = Path(source).resolve()
+        def install():
+            import hashlib
+            import zipfile
+            from pcide.core.plugin_market import install_archive
+            try:
+                sidecars = [source.with_suffix(source.suffix + ".json"), source.with_suffix(".json")]
+                raw = None
+                for sidecar in sidecars:
+                    if sidecar.is_file():
+                        raw = json.loads(sidecar.read_text(encoding="utf-8"))
+                        break
+                if raw is None:
+                    with zipfile.ZipFile(source) as bundle:
+                        raw = json.loads(bundle.read("catalog.json").decode("utf-8"))
+                item = raw["plugins"][0] if isinstance(raw, dict) and isinstance(raw.get("plugins"), list) else raw
+                item = dict(item)
+                digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                if item.get("sha256", "").lower() != digest:
+                    raise ProjectError("插件包 SHA-256 与清单不一致")
+                item["sha256"] = digest
+                target = install_archive(item, source, self.project.root / "plugins")
+                self.registry.discover()
+                return {"installed": target.name}
+            except (OSError, ValueError, KeyError, IndexError, TypeError, zipfile.BadZipFile) as exc:
+                raise ProjectError(f"插件包无效：{exc}") from exc
+        self.submit(install)
+
     def unload_plugins(self):
-        self.submit(lambda: (self.registry.close(), {"status": "unloaded"})[1])
+        try:
+            manifests = self.registry.discover()
+        except Exception as exc:
+            self.log(str(exc))
+            return
+        if not manifests:
+            self.log("没有已安装插件")
+            return
+        labels = [manifest.id for manifest in manifests]
+        plugin_id, ok = QInputDialog.getItem(self, "卸载插件", "插件", labels, editable=False)
+        if not ok:
+            return
+        project = self.project
+        def unload():
+            from pcide.core.plugin_market import uninstall_plugin
+            self.registry.unload(plugin_id)
+            uninstall_plugin(plugin_id, project.root / "plugins")
+            self.registry.discover()
+            return {"uninstalled": plugin_id}
+        self.submit(unload)
 
     def build(self):
         from pcide.core.builder import BuildManager
@@ -1207,21 +1543,26 @@ class MainWindow(QMainWindow):
 
 def main(argv=None):
     argv = list(argv or sys.argv[1:])
-    for mode in ("worker", "plugin_host"):
+    for mode in ("worker", "plugin_host", "agent_http"):
         if f"--{mode}" in argv:
             if mode == "worker":
                 from pcide.core.worker import main as host_main
-            else:
+            elif mode == "plugin_host":
                 from pcide.core.plugin_host import main as host_main
+            else:
+                from pcide.core.agent_http import main as host_main
             return host_main()
     parser = argparse.ArgumentParser()
     parser.add_argument("--project")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--ui-smoke", action="store_true")
+    parser.add_argument("--editor", choices=("auto", "native", "monaco"), default="auto")
     parser.add_argument("--screenshot")
     parser.add_argument("--report")
     parser.add_argument("--build", action="store_true")
     args = parser.parse_args(argv)
+    if args.editor != "auto":
+        os.environ["PCIDE_EDITOR_BACKEND"] = args.editor
     if args.build and not args.smoke:
         parser.error("--build requires --smoke")
     paths = Paths().ensure()
@@ -1260,7 +1601,7 @@ def main(argv=None):
     window = MainWindow(project, paths)
     window.show()
     if args.ui_smoke:
-        result = {"qt": True, "monaco": False, "frozen": bool(getattr(sys, "frozen", False)),
+        result = {"qt": True, "monaco": False, "editor": "native" if window.editor._fallback else "monaco", "frozen": bool(getattr(sys, "frozen", False)),
                   "resources": str(paths.resources), "language": project.manifest["language"]}
         def finish():
             def inspected(snapshot):
@@ -1268,12 +1609,13 @@ def main(argv=None):
                     snapshot = json.loads(snapshot)
                 except (ValueError, TypeError):
                     snapshot = None
-                result["monaco"] = isinstance(snapshot, dict) and snapshot.get("text") == project.entry_path.read_text(encoding="utf-8")
+                result["editor_ready"] = isinstance(snapshot, dict) and snapshot.get("text") == project.entry_path.read_text(encoding="utf-8")
+                result["monaco"] = result["editor_ready"] and not window.editor._fallback
                 if args.screenshot:
                     window.grab().save(args.screenshot)
                 atomic_write_json(args.report or paths.logs / "ui-smoke.json", result)
                 window.close()
-                app.exit(0 if result["monaco"] else 2)
+                app.exit(0 if result["editor_ready"] else 2)
             window.editor.page.runJavaScript("JSON.stringify(pcide.snapshot())", inspected)
         def ready():
             QTimer.singleShot(800, finish)

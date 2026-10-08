@@ -255,8 +255,15 @@ def main():
                                             "--report", str(ui_report), "--screenshot", str(paths.logs / "frozen-ide.png")],
                                            environment, scratch, paths.logs / "frozen-ui-smoke.log", 30)
         ui = json.loads(ui_report.read_text(encoding="utf-8"))
-        if not ui["qt"] or not ui["monaco"] or not ui["frozen"]:
-            raise RuntimeError(f"frozen Monaco gate failed: {ui_report}")
+        # WebEngine/Monaco is preferred, but the frozen IDE must be able to
+        # complete UI smoke with the bounded native editor fallback on
+        # restricted Windows hosts where Chromium/Mojo cannot initialize.
+        editor_backend = ui.get("editor")
+        if (not ui.get("qt") or not ui.get("editor_ready") or not ui.get("frozen")
+                or editor_backend not in {"monaco", "native"}):
+            raise RuntimeError(f"frozen editor gate failed ({editor_backend!r}): {ui_report}")
+        evidence["ui_editor"] = editor_backend
+        evidence["ui_monaco"] = bool(ui.get("monaco"))
         evidence["worker_lifecycle"] = verify_worker_lifecycle(
             executable.parent / "_internal/runtime/prebuilt/project-runtime-vision/PCIDE.Runtime.exe", scratch, environment, paths)
         evidence["ok"] = True

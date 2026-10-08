@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
-import tempfile
 import threading
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 from pcide.core.flow import FlowRunner, validate_flow
@@ -20,7 +21,11 @@ from pcide.core.vision import VisionWorkbench
 
 class WorkspaceCase(unittest.TestCase):
     def setUp(self):
-        self.temp = Path(tempfile.mkdtemp(prefix="contract-", dir=Paths().ensure().cache))
+        # Python 3.12 mkdtemp uses mode 0700, whose Windows DACL excludes the
+        # restricted child token on this host. Normal mkdir preserves cache
+        # inheritance, and a UUID keeps concurrent test runs independent.
+        temp_root = Path(os.environ.get("PCIDE_TEST_TMP") or (Path(__file__).resolve().parents[1] / "cache" / "test-workspaces"))
+        self.temp = temp_root / ("contract-" + uuid.uuid4().hex)
         self.paths = Paths(self.temp).ensure()
         self.owned = []
 
@@ -31,7 +36,7 @@ class WorkspaceCase(unittest.TestCase):
                 resource.wait()
             else:
                 resource.close()
-        shutil.rmtree(self.temp)
+        shutil.rmtree(self.temp, ignore_errors=True)
 
     def project(self, name="test", language="python", source=None):
         project = Project.create(self.paths, name, language)
