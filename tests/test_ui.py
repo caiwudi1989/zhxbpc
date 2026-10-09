@@ -65,6 +65,8 @@ class UiTests(WorkspaceCase):
         self.assertIn(r"\.子程序\s+", source)
         self.assertIn("if(currentLanguage==='zhxb')return text", source)
         self.assertIn("startupRoutines=Array.isArray(data.startupRoutines)", source)
+        self.assertIn("routine-local-name", source)
+        self.assertIn("逻辑型(布尔型)", source)
 
     def test_startup_handler_is_the_only_special_startup_title(self):
         self.assertEqual(self.window._startup_routine_names(), ["on_main_form_load"])
