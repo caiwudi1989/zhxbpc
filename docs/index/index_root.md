@@ -16,7 +16,8 @@
 - `src/pcide/core/unity.py`: Unity project detection, scene inspection, MonoBehaviour bridge generation, and explicit Assets sync.
 - `src/pcide/core/agent_roles.py`: architect/code/UI/database/model/test Agent role catalog.
 - `src/pcide/core/plugin_market.py`: offline plugin catalog validation and package hash gate.
-- `src/pcide/ui/editor.py`: Monaco editor with a native Qt fallback for Windows environments where Chromium Mojo IPC cannot create its named pipe; the bundled projection script is syntax-checked, and routine metadata view zones are positioned after their declarations so tables do not overlap source lines.
+- `src/pcide/ui/editor.py`: Monaco editor with a native Qt fallback for Windows environments where Chromium Mojo IPC cannot create its named pipe; routine metadata view zones are positioned after declarations with Yi-style visible collapse/expand controls, editable name/return/remark fields, public red check marks, and measured heights.
+- `src/pcide/ui/editor.html`: Monaco 视图通过 `setHiddenAreas()` 隐藏导入与子程序声明行，仅保留子程序信息区和代码体；`.zhxb` 保持原文，不做错误的关键字投影。
 - `docs/规范/platform.md`: platform capability/provider contract and lifecycle stages.
 - `src/hosts`: isolated native/.NET/Android host sources; contracts are in `docs/规范`.
 - `third_party/monaco`: reviewed Microsoft editor distribution used by the Qt WebEngine editor.

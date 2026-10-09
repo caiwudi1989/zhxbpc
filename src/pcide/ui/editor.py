@@ -84,6 +84,7 @@ class Bridge(QObject):
     changed = Signal(str, str)
     cursor = Signal(str, int)
     breakpoint = Signal(str, int)
+    routine_metadata = Signal(str, str)
     error = Signal(str)
 
     @Slot()
@@ -101,6 +102,10 @@ class Bridge(QObject):
     @Slot(str, int)
     def toggleBreakpoint(self, uri, line):
         self.breakpoint.emit(uri, line)
+
+    @Slot(str, str)
+    def routineMetadata(self, uri, metadata):
+        self.routine_metadata.emit(uri, metadata)
 
     @Slot(str)
     def reportError(self, message):
@@ -214,6 +219,7 @@ class CodeEditor(QWidget):
     changed = Signal(str)
     cursor = Signal(str, int)
     breakpoint = Signal(str, int)
+    routine_metadata = Signal(str, str)
     error = Signal(str)
 
     def __init__(self, paths: Paths, parent=None):
@@ -224,6 +230,8 @@ class CodeEditor(QWidget):
         self.path: str | None = None
         self.loaded = False
         self.completion_items: list[dict] = []
+        self.routine_metadata_index: dict = {}
+        self.startup_routines: list[str] = []
         self.chinese_view = True
         backend = os.environ.get("PCIDE_EDITOR_BACKEND", "auto").strip().lower()
         self._fallback = backend == "native" or (backend != "monaco" and _webengine_blocked())
@@ -232,6 +240,7 @@ class CodeEditor(QWidget):
         self.bridge.changed.connect(self._changed)
         self.bridge.cursor.connect(self.cursor)
         self.bridge.breakpoint.connect(self.breakpoint)
+        self.bridge.routine_metadata.connect(self.routine_metadata)
         self.bridge.error.connect(self.error)
         if self._fallback:
             self.profile = None
@@ -366,7 +375,9 @@ class CodeEditor(QWidget):
         language = self._language(path)
         args = json.dumps({"path": path, "language": language, "text": self.documents[path],
                            "completions": self.completion_items, "chinese": self.chinese_view,
-                           "words": PYTHON_WORDS if language == "python" else JS_WORDS}, ensure_ascii=False)
+                           "words": PYTHON_WORDS if language == "python" else JS_WORDS,
+                           "routines": self.routine_metadata_index,
+                           "startupRoutines": self.startup_routines}, ensure_ascii=False)
         self.page.runJavaScript(f"pcide.open({args})")
 
     @staticmethod
@@ -397,6 +408,17 @@ class CodeEditor(QWidget):
             self._fallback_completion_model.setStringList([item["label"] for item in self.completion_items])
         if self.loaded and self.path:
             self.page.runJavaScript(f"pcide.setCompletions({json.dumps(self.completion_items, ensure_ascii=False)})")
+
+    def set_routine_metadata(self, metadata):
+        self.routine_metadata_index = metadata if isinstance(metadata, dict) else {}
+        if self.loaded and self.path:
+            self._show_model(self.path)
+
+    def set_startup_routines(self, names):
+        """Set the single project-defined startup handler shown as _启动程序."""
+        self.startup_routines = list(dict.fromkeys(str(name) for name in (names or []) if str(name).strip()))
+        if self.loaded and self.path:
+            self._show_model(self.path)
 
     def set_chinese_view(self, enabled):
         self.chinese_view = bool(enabled)

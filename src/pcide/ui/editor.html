@@ -5,10 +5,15 @@ html,body,#editor{width:100%;height:100%;margin:0;overflow:hidden;background:#fb
 .monaco-editor .monaco-scrollable-element{background-color:#fbfbfa!important}
 .monaco-editor .margin{background-color:#f3f5f7!important}
 .pcide-breakpoint{background:#d5453e;border-radius:50%;width:10px!important;height:10px!important;margin:3px}
-.routine-zone{padding:10px 0 4px 12px;font:14px 'Microsoft YaHei UI',sans-serif;color:#202124;box-sizing:border-box}
+.routine-zone{position:relative;z-index:20;pointer-events:auto;padding:10px 0 4px 0;font:14px 'Microsoft YaHei UI',sans-serif;color:#202124;box-sizing:border-box;background:#fbfbfa}
+.routine-zone .routine-line-number{position:absolute;left:7px;top:12px;width:30px;text-align:right;color:#7b8794;font:12px Consolas,'Microsoft YaHei UI',monospace;line-height:20px;pointer-events:none}
+.routine-zone .routine-bar{display:flex;align-items:center;gap:6px;height:22px;margin:0 0 3px 60px;font-weight:bold;color:#3b4a56;cursor:pointer;user-select:none}
+.routine-zone .routine-toggle{position:absolute;left:38px;top:10px;width:20px;height:20px;padding:0;border:0;background:transparent;color:#3b4a56;line-height:16px;font-size:16px;font-weight:bold;cursor:pointer;pointer-events:auto}
+.routine-zone .routine-public.enabled{color:#d52222;font-weight:bold}
+.routine-zone .routine-content{overflow:hidden}
 .routine-zone table{border-collapse:collapse;margin:0 0 4px 0;background:#fbfbfa}
 .routine-zone th,.routine-zone td{border:1px solid #9daba5;padding:3px 8px;min-width:55px;height:20px;text-align:left;font-weight:normal}
-.routine-zone th{background:#e7eee6}.routine-zone input{border:0;background:transparent;color:#0000aa;font:inherit;min-width:120px;outline:none}
+.routine-zone th{background:#e7eee6}.routine-zone input,.routine-zone select{box-sizing:border-box;width:100%;min-width:120px;height:26px;padding:2px 6px;border:1px solid #aeb9b2;background:#fff;color:#0000aa;font:inherit;outline:none;pointer-events:auto}.routine-zone input:focus,.routine-zone select:focus{border:1px solid #176ac6;box-shadow:inset 0 0 0 1px #cfe3ff}.routine-zone .routine-name.locked{background:#eef1f3;color:#59636c;cursor:not-allowed}.routine-zone .routine-public{width:18px;min-width:18px;height:18px;padding:0;cursor:pointer;accent-color:#d52222;vertical-align:middle}.routine-zone .routine-public.enabled{color:#d52222;font-weight:bold}.routine-zone .routine-add-local,.routine-zone .routine-remove-local{height:24px;padding:1px 8px;border:1px solid #9daba5;background:#eef3ef;color:#26313d;cursor:pointer}.routine-zone .routine-add-local{margin:0 0 4px 60px}.routine-zone .routine-remove-local{min-width:44px;width:auto}
 </style></head><body><div id="editor"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="pcide://editor/vs/loader.js"></script>
@@ -19,6 +24,7 @@ require.config({paths:{vs:'pcide://editor/vs'}});
 require(['vs/editor/editor.main'],()=>{
  new QWebChannel(qt.webChannelTransport,channel=>{
   const bridge=channel.objects.bridge, models=new Map();
+  let hiddenLineNumbers=new Set();
   monaco.editor.defineTheme('pcide-light',{base:'vs',inherit:true,rules:[
    {token:'comment',foreground:'#6b8e23'},{token:'string',foreground:'#a31515'},
    {token:'keyword',foreground:'#0000aa',fontStyle:'bold'},{token:'number',foreground:'#098658'}
@@ -30,18 +36,20 @@ require(['vs/editor/editor.main'],()=>{
   const editor=monaco.editor.create(document.getElementById('editor'),{
    language:'python',theme:'pcide-light',automaticLayout:true,fontSize:14,
    fontFamily:'Consolas, "Microsoft YaHei UI", monospace',glyphMargin:true,minimap:{enabled:false},
+   lineNumbers:lineNumber=>hiddenLineNumbers.has(lineNumber)?'':String(lineNumber),
    scrollBeyondLastLine:false,tabSize:4,insertSpaces:true,lineNumbersMinChars:4,
    renderLineHighlight:'all',quickSuggestions:{other:true,comments:true,strings:true},
    suggestOnTriggerCharacters:true,wordBasedSuggestions:'currentDocument',
-   padding:{top:8,bottom:12},smoothScrolling:true,foldingStrategy:'indentation',showFoldingControls:'always'
+   padding:{top:8,bottom:12},smoothScrolling:true,foldingStrategy:'indentation',showFoldingControls:'never'
   });
   const kindMap={variable:monaco.languages.CompletionItemKind.Variable,
    constant:monaco.languages.CompletionItemKind.Constant,function:monaco.languages.CompletionItemKind.Function,
    method:monaco.languages.CompletionItemKind.Method,keyword:monaco.languages.CompletionItemKind.Keyword,
    class:monaco.languages.CompletionItemKind.Class,field:monaco.languages.CompletionItemKind.Field,
    snippet:monaco.languages.CompletionItemKind.Snippet};
-  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[];
+  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[],routineCollapsed={},routineInfo={},startupRoutines=[];
   function projectText(text,reverse=false){
+   if(currentLanguage==='zhxb')return text;
    const map=reverse?Object.fromEntries(Object.entries(words).map(([a,b])=>[b,a])):words;
    // In a Unicode JavaScript regexp, `\#` is an invalid identity escape.
    // Keep the hash literal unescaped so Chromium can parse the editor bundle.
@@ -51,30 +59,90 @@ require(['vs/editor/editor.main'],()=>{
   }
   function renderRoutines(){
    const model=editor.getModel();if(!model)return;
+   const rendered=[];
    editor.changeViewZones(accessor=>{zones.forEach(id=>accessor.removeZone(id));zones=[];
-    if(!['python','javascript','typescript'].includes(currentLanguage))return;
+    if(!['python','javascript','typescript','zhxb'].includes(currentLanguage))return;
     const lines=model.getLinesContent();
+    const routines=[];
     lines.forEach((line,index)=>{
-     const match=line.match(/^\s*(?:def|function|子程序)\s+([^\s(]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?/u);if(!match)return;
+     const match=line.match(/^\s*(?:def|function|子程序)\s+([^\s(]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?/u);
+     const zhxb=currentLanguage==='zhxb'&&line.match(/^\s*\.子程序\s+([^\s(]+)(?:\s*\(([^)]*)\))?/u);
+     if(match)routines.push({index,name:match[1],params:match[2]||'',returnType:(match[3]||'').trim(),locked:false,line});
+     else if(zhxb)routines.push({index,name:zhxb[1],params:zhxb[2]||'',returnType:'',locked:false,line});
+    });
+    routines.forEach(({index,name:sourceName,params:rawParams,returnType:sourceReturn,line})=>{
      const node=document.createElement('div');node.className='routine-zone';
+     const startup=startupRoutines.includes(sourceName);
+     const displayName=startup?String(routineInfo[path+':'+(index+1)]?.name||'_启动程序'):sourceName;
+     const routineKey=path+':'+index+':'+sourceName,bar=document.createElement('div'),toggle=document.createElement('button'),caption=document.createElement('span'),lineNumber=document.createElement('span');
+     lineNumber.className='routine-line-number';lineNumber.textContent=String(index+1);lineNumber.title='源码行 '+(index+1);node.appendChild(lineNumber);
+     bar.className='routine-bar';toggle.className='routine-toggle';toggle.type='button';caption.textContent='子程序 '+displayName;bar.append(toggle,caption);node.appendChild(bar);
+     const content=document.createElement('div');content.className='routine-content';node.appendChild(content);
+     const collapsed=Boolean(routineCollapsed[routineKey]);
+     toggle.textContent=collapsed?'▸':'▾';content.hidden=collapsed;
+     toggle.onclick=event=>{event.preventDefault();event.stopPropagation();routineCollapsed[routineKey]=!routineCollapsed[routineKey];renderRoutines();};
+     bar.onclick=event=>{if(event.target!==toggle)toggle.click();};
+     const stored=routineInfo[path+':'+(index+1)]||Object.values(routineInfo).find(item=>item&&item.file&&path.replaceAll('\\','/').endsWith(item.file)&&item.line===index+1)||{};
+     const metadata={name:String(stored.name||displayName),returnType:String(stored.returnType||sourceReturn||''),public:Boolean(stored.public),remark:String(stored.remark||''),locals:Array.isArray(stored.locals)?stored.locals.map(item=>({name:String(item.name||''),type:String(item.type||'文本型'),defaultValue:String(item.defaultValue??item.default??''),remark:String(item.remark||'')})):[]};
+     const publish=()=>{const value={line:index+1,name:metadata.name,sourceName,returnType:metadata.returnType,public:metadata.public,remark:metadata.remark,locals:metadata.locals,startup};routineInfo[path+':'+(index+1)]={...value};bridge.routineMetadata(path,JSON.stringify(value));};
      const table=document.createElement('table'),head=table.insertRow();
      ['子程序名','返回值类型','公开','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;head.appendChild(th);});
-     const row=table.insertRow(),name=document.createElement('input');name.value=match[1];row.insertCell().appendChild(name);
-     name.onchange=()=>{if(!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name.value)){name.value=match[1];return;}
-      const offset=line.indexOf(match[1]);editor.executeEdits('routine-name',[{range:new monaco.Range(index+1,offset+1,index+1,offset+1+match[1].length),text:name.value}]);};
-     [match[3]||'无','', ''].forEach(text=>row.insertCell().textContent=text);node.appendChild(table);
-     const params=match[2].split(',').map(value=>value.trim()).filter(Boolean);
+     const row=table.insertRow(),name=document.createElement('input');name.className='routine-name';name.value=metadata.name;name.title=startup?'启动子程序标题，可编辑；实际启动事件仍绑定当前窗口加载处理器':'子程序名称';row.insertCell().appendChild(name);
+     name.onchange=()=>{if(!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name.value)){name.value=metadata.name;return;}
+      metadata.name=name.value;caption.textContent='子程序 '+metadata.name;if(!startup){const offset=line.indexOf(sourceName);editor.executeEdits('routine-name',[{range:new monaco.Range(index+1,offset+1,index+1,offset+1+sourceName.length),text:name.value}]);}publish();};
+     const returnCell=document.createElement('select');returnCell.className='routine-return';[['无返回值',''],['文本型','文本型'],['数值型','数值型'],['整数型','整数型'],['长整数型','长整数型'],['小数型','小数型'],['双精度小数型','双精度小数型'],['逻辑型(布尔型)','逻辑型(布尔型)'],['字节型','字节型'],['日期时间型','日期时间型'],['字节集','字节集'],['对象型','对象型'],['数组型','数组型'],['自定义类型','自定义类型']].forEach(([label,value])=>returnCell.add(new Option(label,value)));returnCell.value=metadata.returnType;returnCell.onchange=()=>{metadata.returnType=returnCell.value;publish();};row.insertCell().appendChild(returnCell);
+     const publicCell=document.createElement('input');publicCell.type='checkbox';publicCell.className='routine-public';publicCell.title='选择公开；双击也可切换';publicCell.checked=metadata.public;publicCell.classList.toggle('enabled',metadata.public);publicCell.onchange=()=>{metadata.public=publicCell.checked;publicCell.classList.toggle('enabled',metadata.public);publish();};publicCell.ondblclick=event=>{event.preventDefault();event.stopPropagation();publicCell.checked=!publicCell.checked;publicCell.dispatchEvent(new Event('change',{bubbles:true}));};row.insertCell().appendChild(publicCell);
+     const remark=document.createElement('input');remark.className='routine-remark';remark.value=metadata.remark;remark.placeholder='备注';remark.title='备注（注释）';remark.oninput=()=>{metadata.remark=remark.value;publish();};remark.onchange=remark.oninput;remark.onblur=remark.oninput;row.insertCell().appendChild(remark);content.appendChild(table);
+     const params=rawParams.split(',').map(value=>value.trim()).filter(Boolean);
      if(params.length){const pt=document.createElement('table'),ph=pt.insertRow();['参数名','类型','默认值','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;ph.appendChild(th);});
-      params.forEach(param=>{const r=pt.insertRow(),parts=param.split('=');const names=parts[0].split(':');[names[0],names[1]||'自动',parts[1]||'', ''].forEach(text=>r.insertCell().textContent=text);});node.appendChild(pt);}
+      params.forEach(param=>{const r=pt.insertRow(),parts=param.split('=');const names=parts[0].split(':');[names[0],names[1]||'自动',parts[1]||'', ''].forEach(text=>r.insertCell().textContent=text);});content.appendChild(pt);}
+     const localTable=document.createElement('table');localTable.className='routine-locals';const localHead=localTable.insertRow();['局部变量名','类型','默认值','备注','操作'].forEach(text=>{const th=document.createElement('th');th.textContent=text;localHead.appendChild(th);});
+     const variableTypes=[['文本型','文本型'],['数值型','数值型'],['整数型','整数型'],['长整数型','长整数型'],['双精度小数型','双精度小数型'],['逻辑型(布尔型)','逻辑型(布尔型)'],['字节型','字节型'],['日期时间型','日期时间型'],['对象型','对象型'],['数组型','数组型'],['自定义类型','自定义类型']];
+     const readLocals=()=>{metadata.locals=[...localTable.querySelectorAll('tbody tr')].map(tr=>({name:tr.querySelector('.routine-local-name')?.value.trim()||'',type:tr.querySelector('.routine-local-type')?.value||'文本型',defaultValue:tr.querySelector('.routine-local-default')?.value||'',remark:tr.querySelector('.routine-local-remark')?.value||''})).filter(item=>item.name);publish();};
+     const localBody=document.createElement('tbody');localTable.appendChild(localBody);
+     const renderLocals=()=>{localBody.textContent='';metadata.locals.forEach((item,localIndex)=>{const localRow=localBody.insertRow();const localName=document.createElement('input');localName.className='routine-local-name';localName.value=item.name;localName.placeholder='变量名';const localType=document.createElement('select');localType.className='routine-local-type';variableTypes.forEach(([label,value])=>localType.add(new Option(label,value)));localType.value=item.type;const localDefault=document.createElement('input');localDefault.className='routine-local-default';localDefault.value=item.defaultValue;const localRemark=document.createElement('input');localRemark.className='routine-local-remark';localRemark.value=item.remark;localRemark.placeholder='备注';[localName,localType,localDefault,localRemark].forEach((field,cellIndex)=>{localRow.insertCell().appendChild(field);field.addEventListener(field.tagName==='SELECT'?'change':'input',()=>{metadata.locals[localIndex]={name:localName.value.trim(),type:localType.value,defaultValue:localDefault.value,remark:localRemark.value};readLocals();});});const remove=document.createElement('button');remove.className='routine-remove-local';remove.type='button';remove.textContent='删除';remove.onclick=()=>{metadata.locals.splice(localIndex,1);renderLocals();publish();};localRow.insertCell().appendChild(remove);});};
+     renderLocals();content.appendChild(localTable);const addLocal=document.createElement('button');addLocal.className='routine-add-local';addLocal.type='button';addLocal.textContent='+ 添加局部变量';addLocal.onclick=()=>{metadata.locals.push({name:'',type:'文本型',defaultValue:'',remark:''});renderLocals();};content.appendChild(addLocal);
       // A view zone belongs below the declaration it describes.  `index` is
       // zero-based while Monaco's `afterLineNumber` is one-based; using the
       // former put the metadata over the declaration and its first statement.
-      // Reserve the padding, borders, and both table rows so the body cannot
-      // paint through the metadata when the zone is laid out.
-      const height=74+(params.length?32+28*params.length:0);
-      zones.push(accessor.addZone({afterLineNumber:index+1,heightInPx:height,domNode:node,suppressMouseDown:false}));
+      // Reserve a first-pass height until the browser has laid out the tables.
+      // Keep enough room for Windows font metrics before the first layout pass.
+      const height=collapsed?34:220+(40*params.length)+(40*metadata.locals.length);
+      const zone={afterLineNumber:index+1,heightInPx:height,domNode:node,suppressMouseDown:true};
+      const id=accessor.addZone(zone);zones.push(id);rendered.push({id,zone,node});
     });
    });
+   syncHiddenSourceLines();
+   // Font metrics and Windows display scaling can make a fixed row estimate
+   // too small.  Measure the laid-out last table and grow only live zones.
+   requestAnimationFrame(()=>{
+    editor.changeViewZones(accessor=>{
+     rendered.forEach(({id,zone,node})=>{
+      if(!zones.includes(id)||!node.isConnected||!node.lastElementChild)return;
+      const last=node.lastElementChild,style=getComputedStyle(last);
+      const bottom=parseFloat(getComputedStyle(node).paddingBottom)||0;
+      const margin=parseFloat(style.marginBottom)||0;
+      const actual=Math.ceil(last.getBoundingClientRect().bottom-node.getBoundingClientRect().top+bottom+margin+2);
+      if(actual>zone.heightInPx){zone.heightInPx=actual;accessor.layoutZone(id);}
+     });
+    });
+   });
+  }
+  function syncHiddenSourceLines(){
+   if(!editor.setHiddenAreas)return;
+   const model=editor.getModel();if(!model){editor.setHiddenAreas([]);return;}
+   if(!chinese){hiddenLineNumbers=new Set();editor.setHiddenAreas([]);editor.updateOptions({lineNumbers:lineNumber=>String(lineNumber)});return;}
+   const hidden=[];
+   model.getLinesContent().forEach((line,index)=>{
+    const trimmed=line.trim();
+    const importLine=/^(?:(?:from|import)\b|const\s+\w+\s*=\s*require|从(?:\s|$)|导入(?:\s|$))/u.test(trimmed);
+    const routineLine=/^(?:(?:def|function|子程序)\s+[^\s(]+\s*\(|\.子程序\s+[\p{L}_\p{N}\u4e00-\u9fff]+)/u.test(trimmed);
+    const startupLine=/^(?:if|如果)\s+__name__\s*==\s*['"]__main__['"]\s*:/u.test(trimmed);
+    if(importLine||routineLine||startupLine)hidden.push(new monaco.Range(index+1,1,index+1,1));
+   });
+   hiddenLineNumbers=new Set(hidden.map(range=>range.startLineNumber));
+   editor.updateOptions({lineNumbers:lineNumber=>hiddenLineNumbers.has(lineNumber)?'':String(lineNumber)});
+   editor.setHiddenAreas(hidden);
   }
   const providers=[];
   function configureCompletions(items){
@@ -104,12 +172,12 @@ require(['vs/editor/editor.main'],()=>{
   });
   let currentLanguage='python';
   window.pcide={
-   open(data){loading=true;path=data.path;currentLanguage=data.language||'plaintext';chinese=Boolean(data.chinese)&&['python','javascript','typescript'].includes(currentLanguage);words=data.words||{};configureCompletions(data.completions);let model=models.get(path);
+   open(data){loading=true;path=data.path;currentLanguage=data.language||'plaintext';chinese=Boolean(data.chinese);words=data.words||{};routineInfo=data.routines||{};startupRoutines=Array.isArray(data.startupRoutines)?data.startupRoutines:[];configureCompletions(data.completions);let model=models.get(path);
     const display=chinese?projectText(data.text):data.text;
     if(!model){model=monaco.editor.createModel(display,data.language,monaco.Uri.file(path));models.set(path,model);}else if(model.getValue()!==display)model.setValue(display);
     editor.setModel(model);monaco.editor.setModelLanguage(model,currentLanguage);renderRoutines();loading=false;editor.focus();},
    setCompletions(items){configureCompletions(items);},
-   snapshot(){return {path,text:chinese?projectText(editor.getValue(),true):editor.getValue(),displayText:editor.getValue(),routineBlocks:zones.length,models:models.size,position:editor.getPosition()};},
+   snapshot(){return {path,text:chinese?projectText(editor.getValue(),true):editor.getValue(),displayText:editor.getValue(),routineBlocks:zones.length,models:models.size,position:editor.getPosition(),hiddenApi:typeof editor.setHiddenAreas};},
    goto(line){editor.revealLineInCenter(line);editor.setPosition({lineNumber:line,column:1});editor.focus();},
    setValue(text){editor.setValue(chinese?projectText(text):text);},
    insertText(text){editor.executeEdits('pcide',[{range:editor.getSelection(),text:chinese?projectText(text):text,forceMoveMarkers:true}]);editor.focus();},

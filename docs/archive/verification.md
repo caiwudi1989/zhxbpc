@@ -133,3 +133,17 @@ All commands below ran from `F:\PC端软件` with the project development enviro
 - 根因：`renderRoutines()` 用零基源码数组索引作为 Monaco 一基 `afterLineNumber`，元数据 view zone 被放在子程序声明前；固定高度又偏小，表格可能继续压到代码行。
 - 修复：`src/pcide/ui/editor.html` 使用 `afterLineNumber:index+1`，并为表格边框、内边距和参数行预留高度；`tests.test_ui.UiTests.test_editor_routine_zone_is_after_declaration` 固定该布局契约。
 - `runtime/node/node.exe` 源码内联脚本语法检查成功；冻结版 `--smoke` 与 `--ui-smoke --editor native` 均 exit `0`，`editor_ready: true`。当前受限 token 仍不能用真实 Chromium 做视觉截图，故 Monaco 视觉位置以代码契约和可用桌面环境验收为准。
+
+## 2026-10-09 子程序信息区收缩/展开收口
+
+- `src/pcide/ui/editor.html` 为每个子程序元数据区增加 `−/＋` 按钮和标题栏；折叠保留标题，展开显示返回值与参数表；view zone 初始高度按 Windows 字体指标预留，并在首帧后按 DOM 实际高度校正。
+- `tests.test_ui.UiTests.test_visible_code_pane_has_source_and_fitting_routine_tables` 与 `test_routine_metadata_can_collapse_and_expand` 在真实 Monaco/WebEngine 中通过，确认代码可见、表格没有穿透代码行，按钮可往返收缩/展开。
+- `run_tests.ps1 -q`：exit `0`，60 tests passed, 2 environment-dependent tests skipped, 87.888 seconds；日志为 `cache/logs/full-tests-20261009-collapse.txt`。
+- `tools/freeze_ide.py`：exit `0`，最终交付为 `build\PCIDE\PCIDE.exe` 和同级 `_internal`；冻结版 `--ui-smoke --editor monaco` exit `0`，`editor_ready: true`，截图为 `cache/logs/frozen-ui-monaco-collapse-20261009.png`。当前受限默认模式仍自动使用 native，显式 Monaco 在本次正常 WebEngine 上可见并显示两个带 `−` 按钮的子程序信息区。
+- 追加元数据验收：`run_tests.ps1 -q` exit `0`，62 tests passed、3 environment-dependent tests skipped（76.264 秒，`cache/logs/full-tests-20261009-routine-metadata.txt`）；公开勾选、名称/返回值/备注字段及跨文件公开补全测试通过。最终冻结 UI smoke 为 `cache/logs/frozen-ui-routine-meta-20261009.json`，exit `0`，`monaco: true`。
+
+## 2026-10-09 源码隐藏视图收口
+
+- `src/pcide/ui/editor.html` 使用 Monaco `setHiddenAreas()` 只隐藏导入行和 `def/function/子程序`（包括 `.子程序`）声明行；模型快照、保存、运行和构建仍读取完整真实源码。
+- 自定义 `▸/▾` 三角继续位于子程序信息区左侧，默认 Monaco 折叠三角保持隐藏；信息区输入框、公开红色 `✔`、备注和跨文件补全不受影响。
+- 本轮冻结版原生 UI smoke `cache/logs/frozen-ui-hidden-native.json` exit 0；定向 `tests.test_ui` 为 15 项通过、3 项环境跳过。全量 62 项中 5 个构建 EXE 失败与 1 个屏幕抓取错误属于当前受限宿主的 PyInstaller ACL/屏幕捕获限制；显式 Monaco 在受限 token 中仍会触发 Chromium Mojo 权限错误，默认后端自动回退 native。

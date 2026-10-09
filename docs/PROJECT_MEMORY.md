@@ -38,6 +38,9 @@
 - 2026-10-09 构建优化：独立 EXE 归档仅压缩小型文本/字节码，DLL/模型/媒体等高密度二进制直接流式写入，并将打包格式纳入指纹；隔离 HelloAutomation 测得首次 2.398 秒、增量 2.226 秒、无变化 1.114 秒。示例交付 `cache/logs/delivery.json` 中 Python/JS/TS 首次分别 3.231/1.689/1.587 秒，缓存分别 1.133/1.390/1.393 秒。
 - 2026-10-09 Monaco 空白修复：`ui/editor.html` 的 Python 中文视图正则使用了 Unicode 模式下非法的 `\#` identity escape，导致 Chromium 在脚本解析阶段报 `Invalid regular expression`，代码模型未创建而显示空白。已改为合法的 `/#.../u`，新增静态回归测试并重建 `build/PCIDE/PCIDE.exe`；Node 内联脚本语法检查、源码/冻结版 smoke 和原生 UI smoke 均通过。
 - 2026-10-09 子程序信息区重叠修复：Monaco view zone 原先使用零基 `index` 作为一基 `afterLineNumber`，把参数/返回值表插到了声明行上方；现改为 `index+1` 并扩大高度预算，避免表格与声明及函数体重叠。新增静态回归测试，源码内联脚本语法检查和冻结版 smoke/UI smoke 通过。
+- 2026-10-09 子程序信息区交互收口：每个 Monaco 子程序信息区增加易语言式 `−/＋` 收缩按钮，折叠时保留子程序标题，展开时恢复返回值/参数表；按 Windows 字体实际布局测量并校正 view zone 高度，防止高 DPI 字体把表格挤出信息区。新增真实 Chromium UI 回归覆盖显示、尺寸和收缩/展开。
+- 2026-10-09 子程序元数据收口：收缩按钮固定在信息区左侧，源码行隐藏 Monaco 默认折叠三角；子程序名称、返回值、备注可直接编辑；公开列双击显示红色 `✔` 并写入 `.pcide/routines.json`，其他源文件的补全索引可调用公开子程序。
+- 2026-10-09 源码视图隐藏收口：Monaco 仅通过 `setHiddenAreas()` 隐藏导入行、`def/function/子程序` 声明行（含 `.子程序` 中文源码格式），不修改模型中的真实源码；中文源码 `.zhxb` 不再误套 Python/JavaScript 关键字投影，保存、运行和编译仍使用原文。
 
 - 2026-10-09：新增 	ools/backup_source.ps1 与 docs/backup-policy.md，规定只备份源码/文档/测试/示例/配置，排除缓存、构建产物和运行环境；每次同步 main 与 ackup/YYYY-MM-DD 到 GitHub/Gitee。
 

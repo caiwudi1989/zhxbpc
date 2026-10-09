@@ -200,6 +200,7 @@ class MainWindow(QMainWindow):
         self.editor = CodeEditor(self.paths)
         self.editor.changed.connect(lambda _: self.mark_dirty())
         self.editor.breakpoint.connect(self.toggle_breakpoint)
+        self.editor.routine_metadata.connect(self._save_routine_metadata)
         self.editor.cursor.connect(self.reverse_navigation)
         self.editor.error.connect(self.log)
         self._editor_toolbar = QToolBar("代码编辑", self)
@@ -323,8 +324,10 @@ class MainWindow(QMainWindow):
         self.designer.load(validate_form(read_json(self.current_form_path, self.project.load_form())))
         self.flow.load(self.project.load_flow())
         self.data_panel.load(self.project.load_data())
+        self.editor.set_startup_routines(self._startup_routine_names())
         self.editor.load(self.project.entry_path)
         self.editor.set_completion_items(self._completion_items())
+        self.editor.set_routine_metadata(self._routine_metadata_index())
         self.project_tree.clear()
         root = QTreeWidgetItem(self.project_tree, [self.project.manifest["name"]])
         root.setData(0, Qt.ItemDataRole.UserRole, str(self.project.root))
@@ -401,6 +404,21 @@ class MainWindow(QMainWindow):
                 items.append({"label": label, "kind": "function", "detail": f"支持库函数 · {value.get('return_type', '')}",
                               "documentation": value.get("description", ""), "parameters": params,
                               "insertText": label + ("(${1})" if params else "()")})
+        # Public routines are project symbols and can be called from every
+        # source file.  The editor writes this small explicit index on edit.
+        try:
+            routines = json.loads((self.project.ide_dir / "routines.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            routines = {}
+        for value in routines.values() if isinstance(routines, dict) else []:
+            if isinstance(value, dict) and value.get("public") and value.get("name"):
+                items.append({"label": value["name"], "kind": "function", "detail": "公开子程序",
+                              "documentation": value.get("remark", ""), "parameters": value.get("parameters", [])})
+            if isinstance(value, dict):
+                for local in value.get("locals", []):
+                    if isinstance(local, dict) and local.get("name"):
+                        items.append({"label": local["name"], "kind": "variable", "detail": "局部变量 · " + str(local.get("type", "文本型")),
+                                      "documentation": str(local.get("remark", ""))})
         for control in self.designer.form.get("controls", []):
             label = control.get("name") or control.get("id")
             if label:
@@ -413,6 +431,65 @@ class MainWindow(QMainWindow):
                 items.append({"label": handler, "kind": "function", "detail": "窗口事件处理子程序"})
         return items
 
+    def _routine_metadata_index(self):
+        try:
+            value = json.loads((self.project.ide_dir / "routines.json").read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _save_routine_metadata(self, uri, raw):
+        """Persist editable routine metadata and refresh cross-file completion."""
+        try:
+            path = Path(uri).resolve()
+            if not path.is_relative_to(self.project.root.resolve()):
+                return
+            metadata = json.loads(raw)
+            if not isinstance(metadata, dict) or not isinstance(metadata.get("line"), int):
+                return
+            if not isinstance(metadata.get("name"), str) or not re.fullmatch(r"[\w\u4e00-\u9fff]+", metadata["name"], re.UNICODE):
+                return
+            allowed_types = {"", "文本型", "数值型", "整数型", "长整数型", "小数型", "双精度小数型",
+                             "逻辑型(布尔型)", "字节型", "日期时间型", "字节集", "对象型", "数组型", "自定义类型"}
+            if metadata.get("returnType", "") not in allowed_types or type(metadata.get("public", False)) is not bool:
+                return
+            if not isinstance(metadata.get("remark", ""), str) or len(metadata.get("remark", "")) > 1024:
+                return
+            locals_value = metadata.get("locals", [])
+            if not isinstance(locals_value, list) or len(locals_value) > 256:
+                return
+            normalized_locals = []
+            local_names = set()
+            for item in locals_value:
+                if not isinstance(item, dict):
+                    return
+                local_name = str(item.get("name", "")).strip()
+                if not local_name:
+                    continue
+                if not re.fullmatch(r"[\w\u4e00-\u9fff]+", local_name, re.UNICODE) or local_name in local_names:
+                    return
+                local_names.add(local_name)
+                local_type = str(item.get("type", "文本型"))
+                if local_type not in allowed_types - {""}:
+                    return
+                normalized_locals.append({"name": local_name, "type": local_type,
+                                          "defaultValue": str(item.get("defaultValue", ""))[:512],
+                                          "remark": str(item.get("remark", ""))[:1024]})
+            metadata["locals"] = normalized_locals
+            index_path = self.project.ide_dir / "routines.json"
+            try:
+                index = json.loads(index_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                index = {}
+            key = f"{path.relative_to(self.project.root).as_posix()}:{metadata['line']}"
+            metadata["file"] = path.relative_to(self.project.root).as_posix()
+            index[key] = metadata
+            index_path.parent.mkdir(parents=True, exist_ok=True)
+            index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            self.editor.set_completion_items(self._completion_items())
+        except (OSError, ValueError, TypeError):
+            self.log("子程序信息保存失败")
+
     def _refresh_routines(self):
         if not hasattr(self, "routine_list"):
             return
@@ -421,13 +498,21 @@ class MainWindow(QMainWindow):
             text = self.project.entry_path.read_text(encoding="utf-8")
         except OSError:
             text = ""
-        pattern = r"(?m)^\s*(?:def|function)\s+([A-Za-z_][A-Za-z0-9_]*)"
         section = self._replace_program_section("子程序")
-        for match in re.finditer(pattern, text):
+        language = self.project.manifest.get("language")
+        if language == "zhxb":
+            pattern = r"(?m)^\s*\.子程序\s+([\w\u4e00-\u9fff]+)"
+        else:
+            pattern = r"(?m)^\s*(?:def|function)\s+([A-Za-z_][A-Za-z0-9_]*)"
+        startup_names = set(self._startup_routine_names())
+        matches = list(re.finditer(pattern, text))
+        for match in sorted(matches, key=lambda value: value.start()):
             line = text.count("\n", 0, match.start()) + 1
-            item = QTreeWidgetItem(self.routine_list, [match.group(1), f"第 {line} 行"])
+            source_name = match.group(1)
+            name = "_启动程序" if source_name in startup_names else source_name
+            item = QTreeWidgetItem(self.routine_list, [name, f"第 {line} 行"])
             item.setData(0, Qt.ItemDataRole.UserRole, line)
-            visible = QTreeWidgetItem(section, [match.group(1) + f"（第 {line} 行）"])
+            visible = QTreeWidgetItem(section, ["子程序 " + name + f"（第 {line} 行）"])
             visible.setData(0, Qt.ItemDataRole.UserRole + 1, line)
 
     def _open_routine(self, item, _column=0):
@@ -693,6 +778,8 @@ class MainWindow(QMainWindow):
             form = self.project.load_window(path)
             self.current_form_path = path.resolve()
             self.designer.load(form)
+            self.editor.set_startup_routines(self._startup_routine_names())
+            self._refresh_routines()
             self._show_designer_view()
             self.statusBar().showMessage(f"已切换窗口：{form['form']['title']}")
             if self.runtime_manager and self.runtime_form:
@@ -700,6 +787,17 @@ class MainWindow(QMainWindow):
                 self.runtime_form = self.runtime_manager.open(str(self.current_form_path))
         except (ProjectError, OSError, ValueError) as exc:
             self.log(str(exc))
+
+    def _startup_routine_names(self):
+        """Return handlers invoked by the selected window's startup/load event."""
+        events = self.designer.form.get("form", {}).get("events", {}) if self.designer.form else {}
+        names = []
+        load_handler = events.get("load")
+        if isinstance(load_handler, str) and load_handler.strip():
+            names.append(load_handler.strip())
+        if self.project.manifest.get("language") == "zhxb":
+            names.append("主程序")
+        return names
 
     def _show_generated_data(self, language, source):
         self.output.setPlainText(source)
@@ -959,6 +1057,8 @@ class MainWindow(QMainWindow):
             self.designer.form = candidate
             self.designer.commit_edit()
             self.designer.load(candidate, True)
+            if not control_id and event_name == "load":
+                self.editor.set_startup_routines(self._startup_routine_names())
             self.designer.select(control_id)
         except ValueError as exc:
             self.log(str(exc))
@@ -1610,6 +1710,7 @@ def main(argv=None):
                 except (ValueError, TypeError):
                     snapshot = None
                 result["editor_ready"] = isinstance(snapshot, dict) and snapshot.get("text") == project.entry_path.read_text(encoding="utf-8")
+                result["editor_hidden_api"] = snapshot.get("hiddenApi") if isinstance(snapshot, dict) else None
                 result["monaco"] = result["editor_ready"] and not window.editor._fallback
                 if args.screenshot:
                     window.grab().save(args.screenshot)
@@ -1618,6 +1719,10 @@ def main(argv=None):
                 app.exit(0 if result["editor_ready"] else 2)
             window.editor.page.runJavaScript("JSON.stringify(pcide.snapshot())", inspected)
         def ready():
+            # Exercise the *visible* code pane. A hidden Monaco model can be
+            # ready even when the user still sees a blank editor after switching.
+            window.tabs.setCurrentWidget(window.editor)
+            window.workspace_tabs.setCurrentWidget(window.tabs)
             QTimer.singleShot(800, finish)
         window.editor.ready.connect(ready)
         def timeout():
