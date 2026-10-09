@@ -18,6 +18,7 @@
 - `src/pcide/core/plugin_market.py`: offline plugin catalog validation and package hash gate.
 - `src/pcide/ui/editor.py`: Monaco editor with a native Qt fallback for Windows environments where Chromium Mojo IPC cannot create its named pipe; routine metadata view zones are positioned after declarations with Yi-style visible collapse/expand controls, editable name/return/remark fields, public red check marks, and measured heights.
 - `src/pcide/ui/editor.html`: Monaco 视图通过 `setHiddenAreas()` 隐藏导入与子程序声明行，仅保留子程序信息区和代码体；`.zhxb` 保持原文，不做错误的关键字投影。
+- `src/pcide/ui/editor.html`: 唯一窗口加载处理器显示为可编辑的 `_启动程序` 标题；普通子程序名称可改，返回值为中文类型下拉框，公开为复选框，备注和局部变量表可编辑，视图区自定义行号覆盖子程序标题。
 - `docs/规范/platform.md`: platform capability/provider contract and lifecycle stages.
 - `src/hosts`: isolated native/.NET/Android host sources; contracts are in `docs/规范`.
 - `third_party/monaco`: reviewed Microsoft editor distribution used by the Qt WebEngine editor.

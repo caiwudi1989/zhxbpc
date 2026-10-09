@@ -74,6 +74,18 @@ class UiTests(WorkspaceCase):
         self.assertEqual(names.count("_启动程序"), 1)
         self.assertIn("on_Button1_click", names)
 
+    def test_startup_title_and_local_variables_persist(self):
+        line = self.window.project.entry_path.read_text(encoding="utf-8").splitlines().index("def on_main_form_load(event=None):") + 1
+        self.window._save_routine_metadata(str(self.window.project.entry_path), json.dumps({
+            "line": line, "name": "软件启动", "sourceName": "on_main_form_load", "startup": True,
+            "returnType": "", "public": False, "remark": "启动入口",
+            "locals": [{"name": "启动参数", "type": "文本型", "defaultValue": "", "remark": ""}],
+        }, ensure_ascii=False))
+        saved = self.window._routine_metadata_index()
+        value = saved[f"src/main.py:{line}"]
+        self.assertEqual(value["name"], "软件启动")
+        self.assertEqual(value["locals"][0]["name"], "启动参数")
+
     def test_visible_code_pane_has_source_and_fitting_routine_tables(self):
         self.window.tabs.setCurrentWidget(self.window.editor)
         self.window.workspace_tabs.setCurrentWidget(self.window.tabs)

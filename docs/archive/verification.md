@@ -147,3 +147,9 @@ All commands below ran from `F:\PC端软件` with the project development enviro
 - `src/pcide/ui/editor.html` 使用 Monaco `setHiddenAreas()` 只隐藏导入行和 `def/function/子程序`（包括 `.子程序`）声明行；模型快照、保存、运行和构建仍读取完整真实源码。
 - 自定义 `▸/▾` 三角继续位于子程序信息区左侧，默认 Monaco 折叠三角保持隐藏；信息区输入框、公开红色 `✔`、备注和跨文件补全不受影响。
 - 本轮冻结版原生 UI smoke `cache/logs/frozen-ui-hidden-native.json` exit 0；定向 `tests.test_ui` 为 15 项通过、3 项环境跳过。全量 62 项中 5 个构建 EXE 失败与 1 个屏幕抓取错误属于当前受限宿主的 PyInstaller ACL/屏幕捕获限制；显式 Monaco 在受限 token 中仍会触发 Chromium Mojo 权限错误，默认后端自动回退 native。
+
+## 2026-10-10 启动子程序、行号和局部变量
+
+- `_启动程序` 由当前窗口 `form.events.load` 唯一确定；它只是界面中的可编辑启动标题，真实加载处理器仍保持可运行绑定。其他子程序不会被批量改名。
+- 子程序信息区增加自定义源码行号、完整中文返回类型下拉框、公开复选框、备注输入和局部变量（名称/类型/默认值/备注/删除）表；数据通过 `.pcide/routines.json` 保存。
+- `runtime\dev\Scripts\python.exe -B -m unittest tests.test_ui -v`：20 项通过、3 项环境跳过，日志 `cache/logs/test-ui-startup-entry-final.txt`；内联 Monaco 脚本 `runtime\node\node.exe --check` exit 0；冻结 EXE `build\PCIDE\PCIDE.exe --smoke` 与 `--ui-smoke --editor native` 均 exit 0，报告 `cache/logs/frozen-startup-entry-smoke-final.json`、`cache/logs/frozen-startup-entry-ui-native-final.json`。
