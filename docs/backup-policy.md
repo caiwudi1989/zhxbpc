@@ -1,10 +1,11 @@
 # 源码备份规则
 
-使用 `tools/backup_source.ps1` 执行备份。每次备份：
+当聊天框提出“备份”时，固定执行 `tools/backup_source.ps1`，不得只备份单个平台：
 
 1. 提交当前源码变更到 `main`。
 2. 创建或更新日期分支 `backup/YYYY-MM-DD`。
-3. 将 `main` 和日期分支推送到 GitHub `origin` 与 Gitee `gitee`。
+3. 将当前 `main` 覆盖推送到 GitHub `origin` 与 Gitee `gitee`。
+4. 将当天日期分支 `backup/YYYY-MM-DD` 覆盖推送到 GitHub 与 Gitee。
 
 仓库只保存源码、文档、测试、示例和项目配置。以下目录及生成物禁止进入备份：
 
@@ -21,6 +22,14 @@
 .\tools\backup_source.ps1 -SkipPush
 ```
 
-4. 两个远程均推送成功后，删除本地专用备份目录 cache/backup/ 和 cache/backups/ 中的备份包与备份缓存；任一推送失败或使用 -SkipPush 时不清理。
+5. 两个远程的 `main` 和日期分支全部推送成功后，删除本地专用备份目录 `cache/backup/` 和 `cache/backups/` 中的备份包与备份缓存；任一推送失败或使用 `-SkipPush` 时不清理。
 
 清理范围仅限上述专用目录，不删除构建产物、运行环境或其他缓存。
+
+标准命令：
+
+```powershell
+.\tools\backup_source.ps1
+```
+
+脚本会先检查禁止目录是否被 Git 跟踪，再提交源码，覆盖推送两个远程，最后才清理备份缓存。

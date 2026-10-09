@@ -46,3 +46,5 @@
 - 2026-10-09：新增 	ools/backup_source.ps1 与 docs/backup-policy.md，规定只备份源码/文档/测试/示例/配置，排除缓存、构建产物和运行环境；每次同步 main 与 ackup/YYYY-MM-DD 到 GitHub/Gitee。
 
 - 2026-10-09：备份规则补充：GitHub/Gitee 双端推送成功后，仅删除 cache/backup/ 和 cache/backups/ 中的本地备份包与备份缓存；失败或本地演练不清理。
+
+- 2026-10-10：固定“聊天框说备份”流程：提交源码后覆盖推送 GitHub/Gitee 的 `main`，覆盖推送 `backup/YYYY-MM-DD`，两端全部成功后才清理 `cache/backup/` 与 `cache/backups/`；任一失败保留缓存现场。

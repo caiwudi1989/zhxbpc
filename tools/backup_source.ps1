@@ -34,8 +34,10 @@ if ($LASTEXITCODE -ne 0) { Invoke-Git @('branch', $dateBranch, 'main') }
 else { Invoke-Git @('branch', '-f', $dateBranch, 'main') }
 
 if (-not $SkipPush) {
-    Invoke-Git @('push', 'origin', 'main', $dateBranch)
-    Invoke-Git @('push', 'gitee', 'main', $dateBranch)
+    # Each remote receives the current main and the date snapshot. The date
+    # branch is intentionally replaced on repeated backups for the same day.
+    Invoke-Git @('push', 'origin', 'main:main', "$dateBranch`:$dateBranch", '--force')
+    Invoke-Git @('push', 'gitee', 'main:main', "$dateBranch`:$dateBranch", '--force')
 
     foreach ($relative in @('cache/backup', 'cache/backups')) {
         $target = [System.IO.Path]::GetFullPath((Join-Path $Root $relative))
