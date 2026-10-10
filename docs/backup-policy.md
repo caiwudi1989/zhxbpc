@@ -42,11 +42,17 @@
 
 ## GitHub 命令行推送代理规则
 
-当浏览器可访问 GitHub、Git 命令行直连 github.com:443 超时时，使用本机代理 http://127.0.0.1:10808：
+当浏览器可以访问 GitHub、而 Git 命令行直连 `github.com:443` 超时时，备份必须先检查本机代理端口 `127.0.0.1:10808`，端口可用后配置：
 
-`powershell
+```powershell
 git config --global http.proxy http://127.0.0.1:10808
-git config --global https.proxy http://127.0.0.1:10808``r
+git config --global https.proxy http://127.0.0.1:10808
+```
 
-先验证 10808 端口可用，再推送 GitHub origin 与 Gitee gitee，并分别核对退出码。
+代理配置后，必须按同一次备份完整执行并核验：
 
+1. 提交源码和当天压缩包到 `main`。
+2. 将当天日期分支强制同步到最新 `main`：`git branch -f backup/YYYY-MM-DD main`。
+3. 同时推送 GitHub `origin` 和 Gitee `gitee` 的 `main`、`backup/YYYY-MM-DD` 四个远程分支。
+4. 使用 `git ls-remote` 核对两个远程的两个分支都指向本次最新提交；日期分支未同步不得报告备份完成。
+5. 四个分支全部成功后才清理专用备份缓存；任一失败则保留缓存并报告失败远程。
