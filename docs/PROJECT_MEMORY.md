@@ -1,5 +1,10 @@
 # Project Memory
 
+## 2026-10-11 备份触发规则
+
+- 已将“备份”定义为双远程源码备份：执行 `tools/backup_source.ps1`，提交当前源码到 `main`，创建或更新 `backup/YYYY-MM-DD`，并把两个分支推送到 GitHub `origin` 与 Gitee `gitee`。
+- “备份”默认不接受仅本地提交或仅单平台推送；只有两个远程均成功后才清理 `cache/backup/` 和 `cache/backups/`。详细规则写入 `AGENTS.md` 与 `docs/backup-policy.md`。
+
 ## 2026-10-10 最新交付：页面继续复核与遗漏补齐
 
 - 延续上一轮页面审查，按用户要求继续检查应加入的内容、重复入口和错放项目；主页面增加“当前操作提示”，共 14 页。完整清单、入口、合并/删减及实际边界见 `docs/规范/pages.md`，随 EXE 分发；下方记录保留此前各轮的真实范围。
