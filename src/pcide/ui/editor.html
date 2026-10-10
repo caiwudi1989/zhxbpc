@@ -59,9 +59,22 @@ require(['vs/editor/editor.main'],()=>{
    lineNumbers:lineNumber=>hiddenLineNumbers.has(lineNumber)?'':String(lineNumber),
    scrollBeyondLastLine:false,tabSize:4,insertSpaces:true,lineNumbersMinChars:4,
    renderLineHighlight:'all',quickSuggestions:{other:true,comments:true,strings:true},
-   suggestOnTriggerCharacters:true,wordBasedSuggestions:'currentDocument',
+    suggestOnTriggerCharacters:true,wordBasedSuggestions:'currentDocument',
+    acceptSuggestionOnEnter:'on',suggestSelection:'first',tabCompletion:'on',
    padding:{top:8,bottom:12},smoothScrolling:true,foldingStrategy:'indentation',showFoldingControls:'never'
   });
+   editor.onDidCompositionStart(()=>{compositionActive=true;});
+   editor.onDidCompositionEnd(()=>{
+    compositionActive=false;
+    // IME commits arrive after compositionend.  Re-trigger once the model
+    // contains the committed Chinese prefix so it can filter system commands.
+    setTimeout(()=>{if(path&&!loading&&editor.hasTextFocus())editor.trigger('pcide','editor.action.triggerSuggest',{auto:true});},0);
+   });
+   editor.onKeyDown(event=>{
+    if(event.keyCode!==monaco.KeyCode.Enter||compositionActive||!suggestionVisible())return;
+    event.preventDefault();event.stopPropagation();
+    editor.trigger('pcide','acceptSelectedSuggestion',{});
+   });
   const dropHost=document.getElementById('editor');
   dropHost.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('text/plain')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});
   dropHost.addEventListener('drop',event=>{
@@ -78,7 +91,7 @@ require(['vs/editor/editor.main'],()=>{
    method:monaco.languages.CompletionItemKind.Method,keyword:monaco.languages.CompletionItemKind.Keyword,
    class:monaco.languages.CompletionItemKind.Class,field:monaco.languages.CompletionItemKind.Field,
    snippet:monaco.languages.CompletionItemKind.Snippet};
-  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[],routineLayouts=[],routineCollapsed={},routineInfo={},startupRoutines=[],customTypes=[];
+   let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[],routineLayouts=[],routineCollapsed={},routineInfo={},startupRoutines=[],customTypes=[],compositionActive=false;
   function projectText(text,reverse=false){
    if(currentLanguage!=='python')return text;
    const map=reverse?Object.fromEntries(Object.entries(words).map(([a,b])=>[b,a])):words;
@@ -313,14 +326,36 @@ require(['vs/editor/editor.main'],()=>{
   function configureCompletions(items){
    completionItems=Array.isArray(items)?items:[];
   }
+   function completionRange(model,position){
+    const line=model.getLineContent(position.lineNumber).slice(0,position.column-1);
+    const match=line.match(/[\p{L}\p{N}_.$\u3400-\u9fff]*$/u);
+    const length=match?match[0].length:0;
+    return {startLineNumber:position.lineNumber,startColumn:position.column-length,
+     endLineNumber:position.lineNumber,endColumn:position.column};
+   }
+   function completionByName(name){
+    const target=String(name||'').toLocaleLowerCase();
+    return completionItems.find(item=>String(item.label||'').toLocaleLowerCase()===target||
+     (Array.isArray(item.aliases)&&item.aliases.some(alias=>String(alias).toLocaleLowerCase()===target)));
+   }
+   function suggestionVisible(){
+    const controller=editor.getContribution?.('editor.contrib.suggestController');
+    const widget=controller?.widget?.value;
+    if(widget){
+     if(typeof widget.isVisible==='function')return Boolean(widget.isVisible());
+     if(typeof widget.isVisible==='boolean')return widget.isVisible;
+    }
+    const node=document.querySelector('.suggest-widget');
+    return Boolean(node&&node.classList.contains('visible'));
+   }
   function completionProvider(){return {triggerCharacters:['.',':','。'],provideCompletionItems(model,position){
-   const word=model.getWordUntilPosition(position),range={startLineNumber:position.lineNumber,startColumn:word.startColumn,
-    endLineNumber:position.lineNumber,endColumn:word.endColumn};
+    const range=completionRange(model,position);
    const localMetadata=Object.values(routineInfo).filter(item=>item&&metadataMatchesFile(item)&&item.line<=position.lineNumber).sort((a,b)=>b.line-a.line)[0];
    const nextDeclaration=model.getLinesContent().slice(localMetadata?.line||0,position.lineNumber-1).some(line=>/^\s*(?:def |function |\.子程序 )/u.test(line));
    const scoped=localMetadata&&!nextDeclaration?[...(localMetadata.locals||[]).map(item=>({label:item.name,kind:'variable',detail:'局部变量 · '+item.type,documentation:item.remark})),...(localMetadata.parameterInfo||[]).map(item=>({label:item.name,kind:'variable',detail:'参数 · '+(item.type||'自动'),documentation:item.remark})),...(localMetadata.declaredLocals||[]).map(item=>({label:item.name,kind:'variable',detail:'源码局部变量 · '+item.type,documentation:item.remark}))]:[];
-   const suggestions=[...completionItems,...scoped].map(item=>({label:item.label,kind:kindMap[item.kind]||kindMap.variable,
-    insertText:item.insertText||item.label,insertTextRules:item.insertText&&item.insertText.indexOf('${')>=0?
+    const suggestions=[...completionItems,...scoped].map(item=>({label:item.label,kind:kindMap[item.kind]||kindMap.variable,
+     filterText:item.filterText||[item.label,...(item.aliases||[])].join(' '),
+     insertText:chinese?projectText(item.insertText||item.label):(item.insertText||item.label),insertTextRules:item.insertText&&item.insertText.indexOf('${')>=0?
     monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet:undefined,detail:item.detail||'项目符号',
     documentation:item.documentation||'',range}));
    return {suggestions};
@@ -332,7 +367,7 @@ require(['vs/editor/editor.main'],()=>{
    provideSignatureHelp(model,position){
     const line=model.getLineContent(position.lineNumber).slice(0,position.column-1),match=line.match(/([A-Za-z_][\w.]*)\([^()]*$/);
     if(!match)return {value:{signatures:[],activeSignature:0,activeParameter:0},dispose(){}};
-    const item=completionItems.find(value=>value.label===match[1].split('.').pop());
+     const item=completionByName(match[1].split('.').pop());
     if(!item||!Array.isArray(item.parameters)||!item.parameters.length)return {value:{signatures:[],activeSignature:0,activeParameter:0},dispose(){}};
     const params=item.parameters.map(value=>typeof value==='string'?{label:value}:value);
     return {value:{signatures:[{label:item.label+'('+params.map(value=>value.label).join(', ')+')',documentation:item.documentation||'',parameters:params}],activeSignature:0,activeParameter:Math.max(0,(line.match(/,/g)||[]).length)},dispose(){}};

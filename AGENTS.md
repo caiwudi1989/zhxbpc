@@ -16,6 +16,7 @@
 - 标准流程必须提交当前源码变更到 `main`，创建或更新当天的 `backup/YYYY-MM-DD` 分支，并将 `main` 与当天日期分支同时推送到 GitHub `origin` 和 Gitee `gitee`。
 - 只有 GitHub 和 Gitee 两个远程都成功接收后，才清理 `cache/backup/` 与 `cache/backups/` 专用备份缓存；推送失败时保留缓存并报告失败原因。
 - 用户不需要重复提醒“推送”：执行备份时必须主动完成双远程推送；每个远程最多自动重试 10 次，10 次仍失败才明确说明外部网络阻断。
+- 两个远程必须在同一次备份中都尝试推送；一个远程失败时仍要继续推送另一个远程，最后统一报告失败远程，不能提前中止。
 - 备份禁止纳入 `cache/`、`build/`、`outputs/`、`runtime/`、`downloads/`、`sdk/`、`third_party/`、`assets/`、`projects/` 及 Python 缓存、日志和临时文件。
 - 每次备份必须生成 `backup-archives/source-YYYY-MM-DD.zip` 日期源码压缩包，并随 `main` 和日期分支推送到 GitHub、Gitee；压缩包不得包含缓存、环境、构建物、日志、临时文件或其他压缩包。
 - 详细规则与远程地址以 `docs/backup-policy.md` 为准；`-SkipPush` 仅用于用户明确要求本地检查时，不是“备份”的默认行为。
