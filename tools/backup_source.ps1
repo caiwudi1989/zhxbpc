@@ -9,6 +9,8 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $Root
 $Git = @('-c', "safe.directory=$Root")
 $Excluded = @('cache', 'build', 'outputs', 'runtime', 'downloads', 'sdk', 'third_party', 'assets', 'projects')
+$ArchiveDirectory = Join-Path $Root 'backup-archives'
+$ArchivePath = Join-Path $ArchiveDirectory "source-$Date.zip"
 
 function Invoke-Git([string[]]$GitArgs) {
     & git @Git @GitArgs
@@ -28,6 +30,22 @@ $status = (& git @Git status --porcelain)
 if ($status) {
     Invoke-Git @('commit', '-m', "源代码备份 $Date")
 }
+
+# Create a dated source-only archive. Generated environments, caches, logs,
+# temporary files, and previous archives are deliberately excluded.
+New-Item -ItemType Directory -Force -Path $ArchiveDirectory | Out-Null
+$archiveFiles = Get-ChildItem -LiteralPath $Root -Recurse -File -Force | Where-Object {
+    $relative = $_.FullName.Substring($Root.Length + 1) -replace '\\', '/'
+    $top = $relative.Split('/')[0]
+    $top -notin ($Excluded + @('backup-archives', '.git')) -and
+        $_.Extension -notin @('.pyc', '.log', '.tmp', '.bak') -and
+        $_.Name -notmatch '^\.DS_Store$'
+}
+if (Test-Path -LiteralPath $ArchivePath) { Remove-Item -LiteralPath $ArchivePath -Force }
+$archiveRelative = @($archiveFiles | ForEach-Object { $_.FullName.Substring($Root.Length + 1) })
+if ($archiveRelative.Count -gt 0) { Compress-Archive -LiteralPath $archiveRelative -DestinationPath $ArchivePath -CompressionLevel Optimal }
+Invoke-Git @('add', 'backup-archives')
+if ((& git @Git status --porcelain)) { Invoke-Git @('commit', '-m', "日期源码压缩备份 $Date") }
 
 $dateBranch = "backup/$Date"
 & git @Git show-ref --verify --quiet "refs/heads/$dateBranch"

@@ -841,8 +841,14 @@ class MainWindow(QMainWindow):
                 for command in library['commands']:
                     code = command['code'].get(language)
                     if code:
-                        items.append({'label': command['label'], 'kind': 'function', 'detail': library['name'],
-                                      'documentation': command['description'], 'insertText': code})
+                        aliases = [str(value) for value in command.get('aliases', []) if str(value).strip()]
+                        documentation = command['description']
+                        if aliases:
+                            documentation += '\n英文名称：' + '、'.join(aliases)
+                        items.append({'label': command['label'], 'aliases': aliases,
+                                      'filterText': ' '.join([command['label'], *aliases]),
+                                      'kind': 'function', 'detail': library['name'],
+                                      'documentation': documentation, 'insertText': code})
             from pcide.core.modules import load_modules
             for module in load_modules(self.project)['modules']:
                 if language in {'python', 'zhxb'}:

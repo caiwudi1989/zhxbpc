@@ -54,6 +54,56 @@ COMMAND_CONTRACTS = {
     '打开窗口': ('打开窗口(窗口路径)', '对象型', '发送 ui.window.open 消息；窗口必须已包含在项目中。'),
     '关闭窗口': ('关闭窗口(窗口路径)', '对象型', '发送 ui.window.close 消息，关闭指定运行窗口。'),
 }
+
+# System-library commands are shown with their Yi-style Chinese name, while
+# the editor must also be searchable from an English keyboard.  Keep the
+# English spellings in the library contract instead of deriving them from a
+# translation at runtime: these names are part of the completion API and must
+# stay stable when a code example changes.
+COMMAND_ENGLISH_ALIASES = {
+    '位与': ('bit_and',), '位异或': ('bit_xor',), '位或': ('bit_or',),
+    '信息框': ('message_box',), '关闭任务池': ('close_task_pool',),
+    '关闭窗口': ('close_window',), '写出文本文件': ('write_text_file',),
+    '写到文件': ('write_file',), '分割文本': ('split_text',),
+    '创建任务池': ('create_task_pool',), '创建字节集': ('create_bytes',),
+    '创建目录': ('create_directory',), '删除数组成员': ('remove_array_item',),
+    '删除文件': ('delete_file',), '到大写': ('to_upper',),
+    '到字节集': ('to_bytes',), '到小写': ('to_lower',),
+    '到小数': ('to_float',), '到整数': ('to_int',), '到文本': ('to_text',),
+    '加入数组成员': ('append_array_item',), '取字节集长度': ('byte_length',),
+    '取对象类型': ('object_type',), '取数组成员数': ('array_length',),
+    '取整': ('truncate',), '取文本长度': ('text_length',),
+    '取最大值': ('max_value',), '取最小值': ('min_value',),
+    '取消友好延时': ('cancelable_sleep',), '取消后台任务': ('cancel_task',),
+    '取现行时间': ('current_time',), '取系统名称': ('system_name',),
+    '取绝对值': ('abs',), '取运行目录': ('current_directory',),
+    '右移': ('bit_shift_right',), '后台更新窗口': ('update_window_async',),
+    '四舍五入': ('round_value',), '如果': ('if',), '子文本替换': ('replace_subtext',),
+    '寻找文本': ('find_text',), '左移': ('bit_shift_left',), '延时': ('delay',),
+    '循环': ('while_loop',), '打开窗口': ('open_window',),
+    '排序数组': ('sort_array',), '控制台输出': ('console_output',),
+    '提交后台任务': ('submit_task',), '数值范围检查': ('clamp_number',),
+    '数据库执行': ('execute_database',), '数据库连接': ('connect_database',),
+    '文件是否存在': ('file_exists',), '文本替换': ('replace_text',),
+    '查询任务完成': ('task_done',), '求平方根': ('sqrt',), '求次方': ('power',),
+    '生成JSON': ('stringify_json',), '等待任务结果': ('wait_task',),
+    '网络请求': ('http_request',), '置当前目录': ('change_directory',),
+    '解析JSON': ('parse_json',), '设置控件属性': ('set_control_property',),
+    '读入文件': ('read_file',), '读取文本文件': ('read_text_file',),
+    '读取环境变量': ('get_environment_variable',), '调试输出': ('debug_print',),
+    '赋值': ('assign',), '转大写': ('uppercase',), '转小写': ('lowercase',),
+    '输出调试文本': ('debug_output',), '返回': ('return',), '逻辑非': ('logical_not',),
+}
+
+
+def _command_aliases(label):
+    """Return stable English aliases for one system command."""
+    values = COMMAND_ENGLISH_ALIASES.get(label, ())
+    if isinstance(values, str):
+        values = (values,)
+    return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+
+
 FORMATS = {
     '.py': ('Python 源码模块','直接加入 src；按 模块名.公开函数 调用'),
     '.zhxb': ('中文源码模块','直接加入 src；公开子程序按 模块名.子程序 调用'),
@@ -70,13 +120,15 @@ FORMATS = {
 }
 
 
-def command(label, category, python, node=None, zhxb=None, description=''):
+def command(label, category, python, node=None, zhxb=None, description='', aliases=None):
     signature, return_type, help_text = COMMAND_CONTRACTS.get(label, ('', '', '使用下方当前语言 API 示例；根据项目填写实际参数。'))
     details = description or help_text
     if signature:
         details = signature+'\n返回类型：'+return_type+'\n'+details
+    aliases = _command_aliases(label) if aliases is None else list(dict.fromkeys(str(value).strip() for value in aliases if str(value).strip()))
     return {'label':label,'category':category,'description':details,
             'signature':signature,'return_type':return_type,
+            'aliases': aliases,
             'code':{'python':python,'zhxb':zhxb or python,'javascript':node,'typescript':node}}
 
 

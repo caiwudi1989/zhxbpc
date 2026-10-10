@@ -275,6 +275,7 @@ class CodeEditor(QWidget):
             self._fallback_completer.activated.connect(self._insert_completion)
             self._fallback_completion_model = QStringListModel([], self._fallback_completer)
             self._fallback_completer.setModel(self._fallback_completion_model)
+            self._fallback_ime_composing = False
             self.page = _FallbackPage(self)
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -311,20 +312,74 @@ class CodeEditor(QWidget):
         if self.path and not getattr(self, "_fallback_loading", False):
             self.documents[self.path] = self._fallback_edit.toPlainText()
             self.changed.emit(self.path)
+            self._refresh_native_completion()
             self._native_timer.start(300)
 
     def _fallback_cursor_changed(self):
         if self.path and not getattr(self, "_fallback_loading", False):
             self.cursor.emit(self.path, self._fallback_edit.textCursor().blockNumber() + 1)
+            self._refresh_native_completion()
+
+    def _native_completion_entries(self):
+        """Build the native popup entries for both Chinese and English input.
+
+        QCompleter's simple string model has no separate filter/display field,
+        so aliases are exposed as additional searchable entries.  Acceptance
+        resolves either spelling back to the one completion record and inserts
+        that record's language-specific code.
+        """
+        entries = []
+        for item in self.completion_items:
+            entries.append(str(item.get("label", "")))
+            entries.extend(str(value) for value in item.get("aliases", []) if str(value).strip())
+        if self.path:
             from pcide.core.routines import find_metadata, scan
             line = self._fallback_edit.textCursor().blockNumber() + 1
-            routine = next((routine for routine in scan(self.documents.get(self.path, ""), Path(self.path).suffix) if routine["line"] <= line <= routine["endLine"]), None)
-            labels = [item["label"] for item in self.completion_items]
+            routine = next((routine for routine in scan(self.documents.get(self.path, ""), Path(self.path).suffix)
+                            if routine["line"] <= line <= routine["endLine"]), None)
             if routine:
-                relative = next((value.get("file", "") for value in self.routine_metadata_index.values() if isinstance(value, dict) and self.path.replace("\\", "/").endswith("/" + value.get("file", ""))), "")
+                relative = next((value.get("file", "") for value in self.routine_metadata_index.values()
+                                 if isinstance(value, dict) and self.path.replace("\\", "/").endswith("/" + value.get("file", ""))), "")
                 stored = find_metadata(self.routine_metadata_index, relative, routine["sourceName"], routine["line"])
-                labels += [item["name"] for item in stored.get("locals", [])] + routine["parameters"]
-            self._fallback_completion_model.setStringList(list(dict.fromkeys(labels)))
+                entries += [str(item.get("name", "")) for item in stored.get("locals", [])]
+                entries += [str(value) for value in routine.get("parameters", [])]
+        return list(dict.fromkeys(value for value in entries if value.strip()))
+
+    def _fallback_completion_prefix(self):
+        cursor = self._fallback_edit.textCursor()
+        block = cursor.block()
+        before = block.text()[:cursor.position() - block.position()]
+        match = re.search(r"[\w.\u3400-\u9fff$]*$", before, re.UNICODE)
+        return match.group(0) if match else ""
+
+    def _refresh_native_completion(self, show=False):
+        if not self._fallback:
+            return
+        self._fallback_completion_model.setStringList(self._native_completion_entries())
+        prefix = self._fallback_completion_prefix()
+        self._fallback_completer.setCompletionPrefix(prefix)
+        if show:
+            self._ensure_native_editable()
+            self._fallback_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._fallback_completer.complete(self._fallback_edit.cursorRect())
+
+    def _accept_native_completion(self, event):
+        """Accept a visible completion with Enter without inserting a newline."""
+        if not self._fallback or self._fallback_ime_composing:
+            return False
+        if event.key() not in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            return False
+        popup = self._fallback_completer.popup()
+        if not popup.isVisible():
+            return False
+        index = popup.currentIndex()
+        text = index.data(Qt.ItemDataRole.DisplayRole) if index.isValid() else self._fallback_completer.currentCompletion()
+        if not text:
+            return False
+        popup.hide()
+        self._insert_completion(str(text))
+        event.accept()
+        return True
 
     def _refresh_native(self):
         if not self._fallback:
@@ -366,12 +421,32 @@ class CodeEditor(QWidget):
             self.page.runJavaScript('pcide.focus()')
 
     def _insert_completion(self, text):
-        self._fallback_edit.insertPlainText(str(text))
+        """Replace the typed Chinese/English prefix with the selected code."""
+        text = str(text)
+        item = next((value for value in self.completion_items
+                     if text == str(value.get("label", "")) or
+                     text.casefold() in {str(alias).casefold() for alias in value.get("aliases", [])}), None)
+        replacement = str(item.get("insertText", text)) if item else text
+        # Native QCompleter does not implement Monaco snippets.  Keep the
+        # useful default body while removing simple tab-stop markers.
+        replacement = re.sub(r"\$\{\d+:([^}]*)\}|\$\{\d+\}", lambda match: match.group(1) or "", replacement)
+        cursor = self._fallback_edit.textCursor()
+        position = cursor.position()
+        block = cursor.block()
+        before = block.text()[:position - block.position()]
+        match = re.search(r"[\w.\u3400-\u9fff$]*$", before, re.UNICODE)
+        start = block.position() + (match.start() if match else len(before))
+        cursor.setPosition(start)
+        cursor.setPosition(position, cursor.MoveMode.KeepAnchor)
+        self._ensure_native_editable()
+        cursor.insertText(replacement)
+        self._fallback_edit.setTextCursor(cursor)
+        self._fallback_edit.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def trigger_completion(self):
         if not self._fallback or not self.completion_items:
             return
-        self._fallback_completer.complete(self._fallback_edit.cursorRect())
+        self._refresh_native_completion(show=True)
 
     def _fallback_set_text(self, text):
         text = str(text)
@@ -533,10 +608,12 @@ class CodeEditor(QWidget):
                 "detail": str(item.get("detail", "")),
                 "documentation": str(item.get("documentation", "")),
                 "parameters": item.get("parameters", []),
+                "aliases": list(dict.fromkeys(str(value).strip() for value in item.get("aliases", []) if str(value).strip())),
+                "filterText": str(item.get("filterText", "")).strip(),
             })
         self.completion_items = normalized[:2000]
         if self._fallback:
-            self._fallback_completion_model.setStringList([item["label"] for item in self.completion_items])
+            self._refresh_native_completion()
         if self.loaded and self.path:
             self.page.runJavaScript(f"pcide.setCompletions({json.dumps(self.completion_items, ensure_ascii=False)})")
 

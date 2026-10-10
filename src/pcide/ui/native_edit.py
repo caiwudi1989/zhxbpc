@@ -47,6 +47,8 @@ class NativeEdit(QPlainTextEdit):
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
+        if self.parent()._accept_native_completion(event):
+            return
         modifiers = event.modifiers()
         plain = not modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier)
         edit = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Backspace, Qt.Key.Key_Delete, Qt.Key.Key_Tab)
@@ -56,9 +58,18 @@ class NativeEdit(QPlainTextEdit):
         super().keyPressEvent(event)
 
     def inputMethodEvent(self, event):
+        if event.preeditString():
+            self.parent()._fallback_ime_composing = True
         if event.commitString() or event.preeditString():
             self.parent()._ensure_native_editable()
         super().inputMethodEvent(event)
+        if event.commitString():
+            self.parent()._fallback_ime_composing = False
+            # The commit is applied by Qt after this event returns.  Refresh
+            # the popup on the next turn so Chinese text can immediately
+            # filter the same system-function list as ASCII input.
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self.parent()._refresh_native_completion)
 
     def hide_lines(self, hidden):
         changed = False
