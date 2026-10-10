@@ -601,6 +601,9 @@ class CodeEditor(QWidget):
             if not label or label in seen:
                 continue
             seen.add(label)
+            raw_aliases = item.get("aliases", [])
+            if isinstance(raw_aliases, str):
+                raw_aliases = [raw_aliases]
             normalized.append({
                 "label": label,
                 "insertText": str(item.get("insertText", label)),
@@ -608,7 +611,7 @@ class CodeEditor(QWidget):
                 "detail": str(item.get("detail", "")),
                 "documentation": str(item.get("documentation", "")),
                 "parameters": item.get("parameters", []),
-                "aliases": list(dict.fromkeys(str(value).strip() for value in item.get("aliases", []) if str(value).strip())),
+                "aliases": list(dict.fromkeys(str(value).strip() for value in raw_aliases if str(value).strip())),
                 "filterText": str(item.get("filterText", "")).strip(),
             })
         self.completion_items = normalized[:2000]

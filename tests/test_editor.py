@@ -4,6 +4,9 @@ import os
 import unittest
 from unittest.mock import patch
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QInputMethodEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 from pcide.ui.editor import CodeEditor, _webengine_blocked
@@ -91,6 +94,29 @@ class NativeEditorTests(WorkspaceCase):
         self.editor.goto(2)
         self.editor.toggle_breakpoint_at_cursor()
         self.assertEqual(toggled[-1], (str(project.entry_path), 2))
+
+    def test_native_bilingual_completion_ime_and_enter_replace_typed_prefix(self):
+        project = self.project(source="value = 1\n")
+        self.editor.load(project.entry_path)
+        self.editor.set_completion_items([{
+            "label": "取绝对值", "aliases": ["abs"], "kind": "function",
+            "insertText": "abs(-1)",
+        }])
+        view = self.editor.view
+        view.setFocus()
+        view.moveCursor(view.textCursor().MoveOperation.End)
+        event = QInputMethodEvent('', [])
+        event.setCommitString('取绝对值')
+        QApplication.sendEvent(view, event)
+        self.app.processEvents()
+        self.assertIn('取绝对值', view.toPlainText())
+        self.editor.trigger_completion()
+        self.app.processEvents()
+        self.assertTrue(self.editor._fallback_completer.popup().isVisible())
+        QTest.keyClick(view, Qt.Key.Key_Return)
+        self.app.processEvents()
+        self.assertEqual(view.toPlainText(), 'value = 1\nabs(-1)')
+        self.assertFalse(self.editor._fallback_completer.popup().isVisible())
 
 
 if __name__ == "__main__":

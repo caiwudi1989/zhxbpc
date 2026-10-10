@@ -41,6 +41,14 @@ class LibraryTests(WorkspaceCase):
                 if code:
                     emit_python('.版本 2\n.子程序 主程序\n' + code + '\n')
 
+    def test_system_commands_have_unique_bilingual_completion_aliases(self):
+        commands = [command for library in SYSTEM_LIBRARIES for command in library['commands']]
+        aliases = [alias for command in commands for alias in command.get('aliases', [])]
+        self.assertEqual(len(aliases), len(set(aliases)))
+        self.assertEqual(len(aliases), len(commands))
+        self.assertEqual(next(command for command in commands if command['label'] == '取绝对值')['aliases'], ['abs'])
+        self.assertEqual(next(command for command in commands if command['label'] == '解析JSON')['aliases'], ['parse_json'])
+
     def test_inserted_zhxb_catalog_commands_execute_math_files_database_tasks_and_ui_proxy(self):
         project = self.project('ChineseCommands', 'zhxb')
         commands = {item['label']: item['code']['zhxb'] for library in SYSTEM_LIBRARIES for item in library['commands']}
