@@ -167,4 +167,3 @@ class FindDialog(QDialog):
             cursor.endEditBlock()
             view.setTextCursor(cursor)
         self.message.setText(f'已替换 {count} 处')
-

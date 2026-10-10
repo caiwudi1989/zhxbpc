@@ -15,5 +15,6 @@
 - 用户说“备份”时，固定执行 `tools/backup_source.ps1` 的标准流程，不得只做本地备份或只提交不推送。
 - 标准流程必须提交当前源码变更到 `main`，创建或更新当天的 `backup/YYYY-MM-DD` 分支，并将 `main` 与当天日期分支同时推送到 GitHub `origin` 和 Gitee `gitee`。
 - 只有 GitHub 和 Gitee 两个远程都成功接收后，才清理 `cache/backup/` 与 `cache/backups/` 专用备份缓存；推送失败时保留缓存并报告失败原因。
+- 用户不需要重复提醒“推送”：执行备份时必须主动完成双远程推送；若网络暂时失败，自动重试并持续处理，直到成功或明确说明仍被外部网络阻断。
 - 备份禁止纳入 `cache/`、`build/`、`outputs/`、`runtime/`、`downloads/`、`sdk/`、`third_party/`、`assets/`、`projects/` 及 Python 缓存、日志和临时文件。
 - 详细规则与远程地址以 `docs/backup-policy.md` 为准；`-SkipPush` 仅用于用户明确要求本地检查时，不是“备份”的默认行为。
