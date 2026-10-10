@@ -166,3 +166,7 @@
 - 四语言最新冻结IDE构建和真正单文件客户EXE均实际输出42；Python还输出封装宿主标记LIBRARY_HOST_OK及DLL结果0。验证环境配置不存在的开发Python、空PYTHONPATH，客户载荷无项目源码/SDK；本机隔离测试不代表另一台干净机器验收。证据 `library-customers-20261010.json` 绑定最终IDE摘要。
 - 最终交付 `build/PCIDE/PCIDE.exe` 和完整同级 `_internal`；EXE SHA-256 `7cbf56abba6212e282be8c5e3cb90919469e99eac3a9249bec11c34889bfea74`，HTML SHA-256 `e0a9617a8dc008f467adc6274d2ea3b77a79fceec6d1ea093d871534dae91223`。staging与原路径script/native/受限auto/正常桌面Monaco smoke及编译代码审计均成功；保留 `build/libraries-parameters-previous-20261010` 和此前回退副本，不删除历史探针缓存。
 - EC/FNE可以登记保存但仍待官方编译/专用ABI桥接；DEX需先部署到Android并配置宿主，真机未验收；裸PYD/.NET程序集要求plugin.json包装。Node插件/DLL代理、Node静态局部/精确版本表、指针/结构体/输出参数/文本返回尚未开放。本轮未重跑此前全量、生产视觉、硬件或干净机器发布门禁；未提交、备份、推送或访问D盘。
+
+## 2026-10-11 备份代理规则补强
+
+- 已确认 GitHub 网页可访问但 Git 直连超时的原因是命令行未使用本机代理 `127.0.0.1:10808`。备份规则已写明先检测代理、配置 Git，再将最新 `main` 同步到 `backup/YYYY-MM-DD`，同时推送 GitHub/Gitee 两个远程的两个分支，并用 `git ls-remote` 核对四个分支；日期分支未跟随最新提交不得报告完成。
