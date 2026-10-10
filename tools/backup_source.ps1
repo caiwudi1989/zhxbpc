@@ -1,6 +1,7 @@
 param(
     [string]$Date = (Get-Date -Format 'yyyy-MM-dd'),
-    [switch]$SkipPush
+    [switch]$SkipPush,
+    [int]$PushAttempts = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,8 +37,22 @@ else { Invoke-Git @('branch', '-f', $dateBranch, 'main') }
 if (-not $SkipPush) {
     # Each remote receives the current main and the date snapshot. The date
     # branch is intentionally replaced on repeated backups for the same day.
-    Invoke-Git @('push', 'origin', 'main:main', "$dateBranch`:$dateBranch", '--force')
-    Invoke-Git @('push', 'gitee', 'main:main', "$dateBranch`:$dateBranch", '--force')
+    if ($PushAttempts -lt 1) { throw 'PushAttempts must be at least 1' }
+    foreach ($remote in @('origin', 'gitee')) {
+        $pushed = $false
+        for ($attempt = 1; $attempt -le $PushAttempts; $attempt++) {
+            try {
+                Invoke-Git @('push', $remote, 'main:main', "$dateBranch`:$dateBranch", '--force')
+                $pushed = $true
+                break
+            } catch {
+                if ($attempt -ge $PushAttempts) { throw "git push failed for $remote after $PushAttempts attempts: $($_.Exception.Message)" }
+                Write-Warning "Push to $remote failed (attempt $attempt/$PushAttempts); retrying..."
+                Start-Sleep -Seconds 2
+            }
+        }
+        if (-not $pushed) { throw "git push failed for $remote" }
+    }
 
     foreach ($relative in @('cache/backup', 'cache/backups')) {
         $target = [System.IO.Path]::GetFullPath((Join-Path $Root $relative))
