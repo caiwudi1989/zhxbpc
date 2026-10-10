@@ -1,6 +1,16 @@
 # PC Modules
 
-## 最新交付：页面继续复核与遗漏补齐
+## 最新交付：子程序输入与快捷键
+
+| 模块 | 修复 | 实际验证 |
+| --- | --- | --- |
+| editor.html / editor.py | 收缩只改显示，解除文档全局只读；全收缩输入先展开；正文/代码页恢复 Qt 与 Monaco 焦点；正文 Ctrl+Z/Y 正确路由 | Monaco7项全部通过；默认4子程序逐个点入并输入字母、数字、换行、中文提交 |
+| native_edit.py | native 可编辑合同；Ctrl+F/H 真正查找替换、跨子程序定位和 Esc 返回正文 | native6项通过/1 Monaco几何跳过；实际查找选择及全部替换 |
+| input_probe.py / main.py | cache 副本专用真实输入门禁、9组 Ctrl 操作、保存重开；异步回调返回后执行，60秒总时限 | 源码、staging、原路径 EXE 均 exit0；用户工程内容摘要保持不变 |
+
+- 当前 `build/PCIDE/PCIDE.exe` SHA-256 `43f8dd535c8c0865da193c41691f77f554a907ffdcb977017f99bd98c063934b`，同级完整 `_internal`；旧版在 `build/editor-input-previous-20261011`。两路径入口/74编译模块/483资源/三套 Runtime 审计一致；C++/中文窗口/Python 冻结 Monaco 启动通过。证据 `cache/logs/editor-input-{primary-artifact,primary-ui,promotion}-20261011.json`；范围见 verification 最新节。
+
+## 此前交付：页面继续复核与遗漏补齐
 
 | 模块 | 内容 | 验证 |
 | --- | --- | --- |

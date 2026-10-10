@@ -1,6 +1,26 @@
 # Verification Evidence
 
-## 2026-10-10 页面继续复核：提示、菜单、排列与预览（最新交付）
+## 2026-10-11 子程序不能输入与 Ctrl 快捷键回归（最新交付）
+
+- 直接证据：用户运行的旧 EXE/HelloAutomation 窗口出现 `Cannot edit in read-only editor`；对应用户截图为前三个子程序收缩、Button2 展开。根因是源码收缩把全编辑器设只读，旧验证要求全收缩时禁止输入；这不等于可用的正文编辑。另有正文隐藏 textarea 被误认 HTML 输入框的撤销路由、Qt/Monaco 焦点未同步。修复后收缩只影响显示，点击正文/恢复代码页同步焦点，完全收缩时输入先展开可见正文；native 使用同一合同并补真正查找替换。
+- 环境：`runtime/dev/Scripts/python.exe -B`，`PYTHONUTF8=1`、`PYTHONDONTWRITEBYTECODE=1`、`PYTHONPATH=F:\PC端软件\src`；Monaco/冻结 UI 使用正常 Windows token，native 门禁用 `PCIDE_EDITOR_BACKEND=native` 和 `QT_QPA_PLATFORM=offscreen`。所有输入只在 cache 工程副本，验证前后比较用户 HelloAutomation 全部文件摘要。
+
+| 命令/门禁 | 最终结果 | 证据（cache/logs） |
+| --- | --- | --- |
+| `-m unittest tests.test_editor_input` + 5项既有折叠/输入/布局/控件导航/快捷键，Monaco | exit0；7项全部通过；15.156秒 | `editor-input-monaco-final-20261011.txt` |
+| 同组 native offscreen | exit0；7项为6通过/1 Monaco几何用例跳过；4.684秒 | `editor-input-native-final-20261011.txt` |
+| `cache/verify_editor_input_delivery_20261011.py source` | exit0、ok:true；实际默认工程4子程序逐个展开/点入/输入；九组 Ctrl 操作、中文提交和磁盘保存/重开通过 | `editor-input-source-ui-20261011.json`、`editor-input-source-keyboard-20261011.json/png` |
+| `tools/freeze_ide.py --output-directory build/editor-input-staging-20261011` | 最终 exit0；完整独立目录，包含最终输入探针与 main 入口 | `editor-input-freeze-ide-20261011.txt`、`cache/build/ide/freeze.log` |
+| `tools/verify_development_artifacts.py <EXE> --report <报告>`，staging/原路径 | 均 exit0、ok:true；入口、训练worker、74编译模块/483资源及三套 Runtime 实际编译代码、指纹、启动器、EXE一致 | `editor-input-{staging,primary}-artifact-20261011.json` |
+| `cache/verify_editor_input_delivery_20261011.py staging/primary --exe <EXE>` | 两路径均 exit0、ok:true；冻结 EXE 实际4子程序输入/九组 Ctrl 操作/保存重开；另3种工程 Monaco 启动通过，原文、共享输出、帮助、冻结资源路径正确 | `editor-input-{staging,primary}-ui-20261011.json` 与对应 keyboard/cpp/zhxb/python JSON/PNG/TXT |
+| `cache/promote_editor_input_20261011.py` | exit0、ok:true；新 EXE 摘要绑定审计/输入门禁，检查 build 内绝对路径和旧 EXE 写权限，保留旧目录后提升；配置工作区 `..\..`，失败分支含回退 | `editor-input-promotion-20261011.json` |
+
+- 5个既有 unittest 目标（`tests.test_ui.UiTests.` 前缀）：`test_startup_collapse_owns_file_initialization_and_separators`、`test_typing_and_newlines_preserve_routine_widgets`、`test_routine_layout_is_compact_resizes_and_preserves_edits`、`test_control_double_click_enters_expanded_routine_body`、`test_shortcuts_have_no_collisions_and_switch_view_without_closing_project`。新输入组确认 marker 属于当前子程序并实际验证 Ctrl+A/C/X/V/Z/Y/S/F/H；Ctrl+F 检查真实选中，Ctrl+H 点击全部替换并校验源码。Monaco 自然按单词/空格建立撤销组，逐组撤销/重做，不要求一键删除全部连续键入。剪贴板原 MIME 数据在测试结束恢复；空剪贴板恢复为空。
+- 诊断与失败未冒充通过：隐藏代码页等待 WebEngine 初始化导致进程阻塞，测试改为先显示代码页；输入探针在 JavaScript 回调内请求下一结果会阻塞，改为回调返回后由 QTimer 执行。查找面板动画中的负坐标导致测试点击失败，等待250ms完成动画后实际点入；native查找关闭后恢复主窗口/正文焦点。native offscreen 恢复空 MIME 曾在解释器退出时崩溃，改为清空；正常 Windows Qt6Core 曾有一次0xc0000409退出，最终源码和两路径冻结门禁均完整 exit0，未把早期失败记录算作成功。
+- 交付：`build/PCIDE/PCIDE.exe` + 同级 `_internal`，SHA-256 `43f8dd535c8c0865da193c41691f77f554a907ffdcb977017f99bd98c063934b`；旧版 `2cb2adfa016ae3bdd36d915b65853a47761c079f13de41b8160a73f9f4491c33` 保留在 `build/editor-input-previous-20261011`。本轮变更在 UI/main，Runtime 指纹清单内源码没有变化，三个既有 Runtime 沿用并实际审计一致。
+- 桌面 Computer Use 因用户 Esc 停止后没有再次调用；之后使用被测程序内的 Qt 鼠标/键盘事件及 QInputMethodEvent 中文 commit 实测，截图实际显示字母/数字/中文，不代表 Windows 输入法候选窗口专项验收。本轮没有重跑历史全量、独立客户 EXE、硬件/Android/生产 OCR/YOLO、签名或干净机器；未修改用户工程、D盘，未创建子代理，未提交/推送。
+
+## 2026-10-10 页面继续复核：提示、菜单、排列与预览（此前交付）
 
 - 延续用户要求检查所有页面、加入遗漏并合并/删减；本轮增加操作提示页，主页面共14个，页面和配套对话框清单见 `docs/规范/pages.md`。新增真实菜单层级/事件编辑、完整排列、容器父级坐标、未保存预览、回车导航和输出清空/导出；MenuBar属性的普通items输入合并为专用菜单编辑器，菜单/控件事件共用源码定位与创建入口，排列右键共用主菜单动作。
 - 环境：`runtime/dev/Scripts/python.exe -B`，`PYTHONUTF8=1`、`PYTHONDONTWRITEBYTECODE=1`、`PYTHONPATH=F:\PC端软件\src`。native 使用 `PCIDE_EDITOR_BACKEND=native`，Monaco与冻结UI使用正常Windows令牌。临时工程和截图在cache；构建、冻结启动和脚本检查由有界子进程管理。

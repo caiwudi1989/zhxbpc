@@ -1,6 +1,14 @@
 # Project Index
 
-## 最新交付：页面继续复核与遗漏补齐
+## 最新交付：子程序输入与 Ctrl 快捷键
+
+- 完整交付 `build/PCIDE/PCIDE.exe`，SHA-256 `43f8dd535c8c0865da193c41691f77f554a907ffdcb977017f99bd98c063934b`；旧目录 `build/editor-input-previous-20261011`。两路径实际逐个点入默认工程4个子程序，验证字母/数字/换行/中文提交、9组 Ctrl 操作和保存重开；入口、74编译模块/483资源/3套 Runtime 审计一致，C++/中文窗口/Python Monaco 启动通过。精确范围见 `archive/verification.md` 最新节。
+- `ui/editor.html` / `editor.py`：收缩不再锁整个文档；全收缩输入先展开正文，正文点击与代码页恢复 Qt/Monaco 焦点，正文撤销/重做走 Monaco。
+- `ui/native_edit.py`：同一可编辑合同、native 查找/替换与 Esc 返回正文、跨子程序定位。
+- `ui/input_probe.py` / `main.py --ui-input-smoke`：只允许 cache 副本的真实鼠标/键盘/中文提交、Ctrl+A/C/X/V/Z/Y/S/F/H、实际查找替换、磁盘保存检查；60秒有界门禁，输入探针在 WebEngine 回调返回后执行。
+- `tests/test_editor_input.py` / `test_ui.py`：用户4子程序操作回归、全收缩自动进入正文；Monaco7项通过，native6通过/1后端几何跳过。Qt 测试先显示代码页再等初始化，旧“收缩就必须只读”的要求已移除。
+
+## 此前交付：页面继续复核与遗漏补齐
 
 - 当前完整交付 `build/PCIDE/PCIDE.exe`，SHA-256 `2cb2adfa016ae3bdd36d915b65853a47761c079f13de41b8160a73f9f4491c33`；旧目录 `build/pages-followup-previous-20261010`。staging/原路径均通过入口、73编译模块、483资源和三套重建Runtime的实际代码审计；四种工程MonacoUI与脚本smoke成功。详细范围见 `archive/verification.md` 最新节。
 - `main.py`：14页适用性/恢复与当前提示、清空/导出共享输出、调用表/断点回车及工程路径边界；窗口菜单/控件事件共用源码入口，未保存设计预览及事件隔离，设计动作限制工程模式；显式排列QMenu对象生命周期修正。
@@ -64,7 +72,7 @@
 - `src/pcide/ui/routine_panel.py`, `native_edit.py`: 原生 Qt 子程序元数据表、当前子程序代码体、真实行号与保留模型的隐藏视图。
 - `src/pcide/ui/routine_ranges.py`: 编辑时的子程序代码范围与首个代码位置，Python 使用 AST/未完成源码回退，Node 忽略字面量和注释中的括号；不改变 Runtime 扫描合同。
 - `editor.html` / `editor.py` / `main.py`: 子程序收缩包含代码体，表格按源码身份复用，正文输入/换行不重建表格；控件双击和子程序导航进入代码体并自动展开。最新交付与证据见 verification 的“三项编辑器修复”。
-- `editor.html` / `editor.py`: 显式启动处理器收缩时包含文件初始化及分隔空白；Monaco 全收缩使用不可编辑、不可见末行锚点，展开恢复正文。实际截图仅剩连续名称行，32项双后端门禁及最新原路径冻结证据见 verification 的“收缩后残留启动代码”。
+- `editor.html` / `editor.py`: 显式启动处理器收缩时包含文件初始化及分隔空白；Monaco 全收缩保留不可见末行锚点，文档保持可编辑；输入先展开当前正文，点击同步 Qt/Monaco 焦点。实际截图仅剩连续名称行，32项双后端门禁及最新原路径冻结证据见 verification 的“收缩后残留启动代码”。
 - `editor.html` / `routine_panel.py`: 公开列只保留复选框本身的一个勾选，去掉旁边重复`✔`；既有保存用例与实际截图通过，最新交付见verification“公开列单个勾选”。
 - `src/pcide/core/routines.py`: 按文件/源码名称匹配稳定元数据身份、重新对齐源码位置、保留字符串与注释的标识符改名。
 - `src/pcide/core/source.py`, `project_sources.py`: Python/中文源码共享 AST 编译入口、实际局部变量、返回/参数类型校验、共享数据与延迟公开调用。

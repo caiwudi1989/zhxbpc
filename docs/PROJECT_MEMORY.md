@@ -1,11 +1,19 @@
 # Project Memory
 
+## 2026-10-11 最新交付：子程序正文输入与 Ctrl 快捷键修复
+
+- 用户运行窗口出现 `Cannot edit in read-only editor`。此前收缩逻辑把整个源码编辑器设为只读，旧门禁还把“不能输入”当成收缩要求；这是回归，启动/截图通过没有覆盖用户逐个展开并输入的实际操作。本轮解除 Monaco/native 的全局只读，收缩只控制可见范围；全收缩后输入先展开当前子程序，点击正文同步 Qt 与 Monaco 焦点，进入代码页恢复焦点。
+- `editor.html` 修正正文 Ctrl+Z/Y：Monaco 的隐藏 textarea 不再误走 HTML 输入框撤销。`editor.py`/`native_edit.py` 补 native 查找/替换对话框、跨子程序定位、当前/全部替换及 Esc 返回正文；输入框与正文按实际焦点处理。新增 `ui/input_probe.py`，仅允许 cache 工程副本，逐个鼠标点入子程序后用真实 Qt 键盘和输入法提交事件写入，检查所属子程序、九组 Ctrl 操作、磁盘保存与重开。
+- 最终源码回归：正常 Windows Monaco 7项全部通过（15.156秒）；native offscreen 7项为6通过/1仅 Monaco 几何用例跳过（4.684秒），进程 exit0。默认 HelloAutomation 副本的源码门禁与 staging/原路径冻结门禁均 exit0，四个子程序分别验证字母/数字、换行、中文提交、readOnly:false；Ctrl+A/C/X/V/Z/Y/S/F/H 验证实际复制/剪切/粘贴、撤销/重做、保存、查找定位和全部替换。
+- 完整目录已提升到 `build/PCIDE/PCIDE.exe` + 同级 `_internal`，工作区 `..\..`；SHA-256 `43f8dd535c8c0865da193c41691f77f554a907ffdcb977017f99bd98c063934b`。旧版 `2cb2adfa016ae3bdd36d915b65853a47761c079f13de41b8160a73f9f4491c33` 保留在 `build/editor-input-previous-20261011`。staging/原路径均审计入口、74编译模块、483资源和三套 Runtime 实际代码/指纹一致；本轮没有修改 Runtime 指纹成员，无需重建 Runtime。两路径另实际启动 C++、中文窗口和 Python 工程 Monaco UI，均 exit0；用户工程全部文件摘要未改变。
+- 证据为 `cache/logs/editor-input-{source,staging,primary}-ui-20261011.json`、`editor-input-{staging,primary}-artifact-20261011.json`、`editor-input-promotion-20261011.json` 和对应 PNG/TXT。桌面 Computer Use 因用户 Esc 停止后没有再调用；最终输入证据来自开发/冻结程序中的 Qt 鼠标、键盘和中文 commit 事件，未宣称实测 Windows 输入法候选窗口。未重跑历史全量、客户 EXE、设备/Android/生产视觉或干净机器；未创建子代理、未修改 D盘、未提交/推送。
+
 ## 2026-10-11 备份触发规则
 
 - 已将“备份”定义为双远程源码备份：执行 `tools/backup_source.ps1`，提交当前源码到 `main`，创建或更新 `backup/YYYY-MM-DD`，并把两个分支推送到 GitHub `origin` 与 Gitee `gitee`。
 - “备份”默认不接受仅本地提交或仅单平台推送；只有两个远程均成功后才清理 `cache/backup/` 和 `cache/backups/`。详细规则写入 `AGENTS.md` 与 `docs/backup-policy.md`。
 
-## 2026-10-10 最新交付：页面继续复核与遗漏补齐
+## 2026-10-10 此前交付：页面继续复核与遗漏补齐
 
 - 延续上一轮页面审查，按用户要求继续检查应加入的内容、重复入口和错放项目；主页面增加“当前操作提示”，共 14 页。完整清单、入口、合并/删减及实际边界见 `docs/规范/pages.md`，随 EXE 分发；下方记录保留此前各轮的真实范围。
 - `main.py` 增加底部“提示 / 输出”、Ctrl+Alt+H 和页面/支持库命令/片段/控件选择的实际说明；输出可清空与导出，中央和底部仍共享一份有界日志。调用表与断点支持双击/回车恢复源码页，调用位置校验当前工程路径与行号。非窗口工程禁用设计动作和快捷键。
