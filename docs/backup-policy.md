@@ -39,3 +39,14 @@
 ```
 
 脚本会先检查禁止目录是否被 Git 跟踪，再提交源码，覆盖推送两个远程，最后才清理备份缓存。
+
+## GitHub 命令行推送代理规则
+
+当浏览器可访问 GitHub、Git 命令行直连 github.com:443 超时时，使用本机代理 http://127.0.0.1:10808：
+
+`powershell
+git config --global http.proxy http://127.0.0.1:10808
+git config --global https.proxy http://127.0.0.1:10808``r
+
+先验证 10808 端口可用，再推送 GitHub origin 与 Gitee gitee，并分别核对退出码。
+
