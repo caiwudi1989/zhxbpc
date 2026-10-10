@@ -5,14 +5,15 @@ import copy
 import json
 import math
 import re
+import keyword
 from typing import Any
 
 from .i18n import make_id
 
 SCOPES = ("global", "window", "module", "local")
 SCOPE_LABELS = {"global": "全局", "window": "窗口", "module": "模块", "local": "局部"}
-TYPES = {"文本": "str", "文本型": "str", "字符串": "str", "整数": "int", "整数型": "int", "长整数型": "int", "小数": "float", "双精度小数型": "float", "布尔": "bool", "逻辑型": "bool", "对象": "dict", "数组": "list"}
-CALLING_CONVENTIONS = ("cdecl", "stdcall", "fastcall", "thiscall", "winapi")
+TYPES = {"文本": "str", "文本型": "str", "字符串": "str", "整数": "int", "整数型": "int", "长整数型": "int", "字节型": "int", "小数": "float", "小数型": "float", "数值型": "float", "双精度小数型": "float", "布尔": "bool", "逻辑型": "bool", "逻辑型(布尔型)": "bool", "对象": "dict", "对象型": "dict", "数组": "list", "数组型": "list", "日期时间型": "str", "字节集": "bytes"}
+CALLING_CONVENTIONS = ("cdecl", "stdcall", "winapi")
 _ID = re.compile(r"^[^\W\d]\w{0,63}$", re.UNICODE)
 
 
@@ -30,12 +31,17 @@ def _identity(item, field="id"):
     value = item.get(field, "")
     if not isinstance(value, str) or not _ID.fullmatch(value):
         raise DataError(f"invalid {field}")
+    if keyword.iskeyword(value) or value.startswith('__pcide_') or value in {'__builtins__', 'process', 'require', 'console', 'Buffer', 'globalThis'}:
+        raise DataError('reserved data identifier: ' + value)
     return value
 
 
 def _name(item, fallback):
     label = item.get("label", item.get("name", fallback))
-    return _text(label, "label", 128, True)
+    label = _text(label, "label", 128, True)
+    if any(ord(character) < 32 for character in label):
+        raise DataError("label cannot contain control characters")
+    return label
 
 
 def _normalize_variables(raw, constants=False, used=()):
@@ -163,6 +169,22 @@ def validate_data(value: Any) -> dict[str, Any]:
         item["description"] = _text(item.get("description", ""), "description", 1024)
         item["members"] = _normalize_variables(item.get("members", []))
         result["types"].append(item)
+    custom = {item["id"] for item in result["types"]}
+    for item in result["variables"] + result["constants"] + [member for typ in result["types"] for member in typ["members"]]:
+        if item["type"] not in TYPES and item["type"] not in custom:
+            raise DataError("unknown data type: " + item["type"])
+        if item["type"] in TYPES:
+            _initializer(item, "python", item in result["constants"])
+        elif item.get('default') or item.get('value'):
+            raise DataError('custom type initial value must be empty')
+    graph = {item['id']: {member['type'] for member in item['members'] if member['type'] in custom} for item in result['types']}
+    def visit_type(identity, active):
+        if identity in active:
+            raise DataError('recursive custom type initialization: ' + identity)
+        for dependency in graph[identity]:
+            visit_type(dependency, active | {identity})
+    for identity in graph:
+        visit_type(identity, set())
     return result
 
 
@@ -171,7 +193,9 @@ def scope_label(scope):
 
 
 _PY_TYPES = {**TYPES, "string": "str", "str": "str", "integer": "int", "number": "float",
-             "boolean": "bool", "object": "dict", "array": "list"}
+             "boolean": "bool", "object": "dict", "array": "list", "无返回值": "None", "空": "None", "void": "None",
+             "指针": "Any", "uint8": "int", "int32": "int", "uint32": "int", "int64": "int", "uint64": "int",
+             "float32": "float", "float64": "float", "bool32": "bool", "utf8": "str", "utf16": "str"}
 _TS_TYPES = {"文本": "string", "字符串": "string", "str": "string", "string": "string",
              "整数": "number", "整数型": "number", "int": "number", "integer": "number",
              "小数": "number", "float": "number", "number": "number", "布尔": "boolean",
@@ -193,8 +217,8 @@ def reference_name(item):
     return f"{owner}.{item['id']}" if owner and item.get("scope") in {"window", "module"} else item["id"]
 
 
-def _initializer(item, language, constant=False):
-    result = _literal(item.get("value" if constant else "default", ""), language, item.get("type"))
+def _initializer(item, language, constant=False, custom_types=()):
+    result = (item['type'] + '()' if language == 'python' else 'new ' + item['type'] + '()') if item.get('type') in custom_types else _literal(item.get("value" if constant else "default", ""), language, item.get("type"))
     if item.get("array"):
         for dimension in reversed(item["array"].split(",")):
             result = f"[{result} for _ in range({int(dimension)})]" if language == "python" else f"Array.from({{length:{int(dimension)}}}, () => {result})"
@@ -228,6 +252,9 @@ def _literal(value, language, declared_type=None):
             number = int(text or "0", 10)
         except ValueError as exc:
             raise DataError(f"invalid integer value: {value}") from exc
+        bounds = {"字节型": (0, 255), "整数型": (-2**31, 2**31-1), "长整数型": (-2**63, 2**63-1)}
+        if declared_type in bounds and not bounds[declared_type][0] <= number <= bounds[declared_type][1]:
+            raise DataError("integer value out of declared range")
         return str(number)
     if type_name in {"float", "number"}:
         try:
@@ -246,6 +273,8 @@ def _literal(value, language, declared_type=None):
         if not isinstance(parsed, expected):
             raise DataError(f"invalid {type_name} value: {value}")
         return repr(parsed) if language == "python" else json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    if type_name == "bytes":
+        return repr(str(value).encode("utf-8")) if language == "python" else f"Buffer.from({json.dumps(str(value), ensure_ascii=False)}, 'utf8')"
     if language == "python":
         if text.lower() in {"true", "false", "none"}:
             return {"true": "True", "false": "False", "none": "None"}[text.lower()]
@@ -266,6 +295,9 @@ def _literal(value, language, declared_type=None):
 def generate_code(data: dict[str, Any], language: str) -> str:
     """Generate declarations and API wrappers for one supported language."""
     model = validate_data(data)
+    custom_types = {item['id'] for item in model['types']}
+    def initialize(item, language, constant=False):
+        return _initializer(item, language, constant, custom_types)
     if language not in {"python", "javascript", "typescript"}:
         raise DataError("unsupported generation language")
     lines = []
@@ -273,54 +305,66 @@ def generate_code(data: dict[str, Any], language: str) -> str:
     constants = [item for item in model["constants"] if item not in scoped]
     variables = [item for item in model["variables"] if item not in scoped]
     if language == "python":
-        lines += ["# Generated by PCIDE program data", "from typing import Any", ""]
+        lines += ["# Generated by PCIDE program data", "from typing import Any", "from pcide.runtime_api import dll", ""]
         for typ in model["types"]:
             lines += [f"class {typ['id']}:", "    def __init__(self):"]
-            lines += [f"        self.{member['id']}: {_py_type(member['type'])} = {_initializer(member, language)}" for member in typ["members"]] or ["        pass"]
+            lines += [f"        self.{member['id']}: {_py_type(member['type'])} = {initialize(member, language)}" for member in typ["members"]] or ["        pass"]
             lines.append("")
         for item in constants:
-            lines.append(f"{item['id']} = {_initializer(item, language, True)}  # {item['label']}")
+            lines.append(f"{item['id']} = {initialize(item, language, True)}  # {item['label']}")
         for item in variables:
-            lines.append(f"{item['id']}: {_py_type(item['type'])} = {_initializer(item, language)}  # {scope_label(item['scope'])}: {item['label']}")
+            lines.append(f"{item['id']}: {_py_type(item['type'])} = {initialize(item, language)}  # {scope_label(item['scope'])}: {item['label']}")
         for api in model["apis"]:
             params = ", ".join(f"{p['id']}: {_py_type(p['type'])}" for p in api["parameters"])
-            lines += ["", f"def {api['id']}({params}) -> {_py_type(api['return_type'])}:", f"    \"\"\"{api['label']} ({api['calling_convention']})\"\"\"", "    raise NotImplementedError"]
+            handle_name = "_dll_" + api["id"]
+            arguments = ", ".join(p["id"] for p in api["parameters"])
+            lines += ["", f"{handle_name} = None", f"def {api['id']}({params}) -> {_py_type(api['return_type'])}:",
+                      f"    {api['label'] + ' (' + api['calling_convention'] + ')'!r}",
+                      f"    global {handle_name}",
+                      f"    if {handle_name} is None:",
+                      f"        {handle_name} = dll.load({api['library']!r}, {api['calling_convention']!r})",
+                      f"    return dll.call({handle_name}, {api['entry']!r}, [{arguments}], {api['return_type']!r}, argument_types={[p['type'] for p in api['parameters']]!r})"]
     elif language == "javascript":
         lines += ["// Generated by PCIDE program data", ""]
         for typ in model["types"]:
             lines += [f"class {typ['id']} {{", "  constructor() {"]
-            lines += [f"    this.{member['id']} = {_initializer(member, language)};" for member in typ["members"]]
+            lines += [f"    this.{member['id']} = {initialize(member, language)};" for member in typ["members"]]
             lines += ["  }", "}"]
-        lines.extend(f"const {i['id']} = {_initializer(i, language, True)}; // {i['label']}" for i in constants)
-        lines.extend(f"let {i['id']} = {_initializer(i, language)}; // {scope_label(i['scope'])}: {i['label']}" for i in variables)
+        lines.extend(f"const {i['id']} = {initialize(i, language, True)}; // {i['label']}" for i in constants)
+        lines.extend(f"let {i['id']} = {initialize(i, language)}; // {scope_label(i['scope'])}: {i['label']}" for i in variables)
         for api in model["apis"]:
             params = ", ".join(p["id"] for p in api["parameters"])
-            lines += ["", f"function {api['id']}({params}) {{", f"  throw new Error('未实现接口: {api['label']}');", "}"]
+            lines += ["", f"// {api['label']}", f"function {api['id']}({params}) {{", "  throw new Error('DLL ABI 仅支持 Python/中文源码独立宿主；Node DLL 尚未开放');", "}"]
     else:
         lines += ["// Generated by PCIDE program data", ""]
         for typ in model["types"]:
             lines += [f"class {typ['id']} {{"]
-            lines += [f"  {member['id']}: {_ts_type(member['type'])} = {_initializer(member, language)};" for member in typ["members"]]
+            lines += [f"  {member['id']}: {_ts_type(member['type'])} = {initialize(member, language)};" for member in typ["members"]]
             lines += ["}"]
-        lines.extend(f"const {i['id']}: {_ts_type(i['type'])} = {_initializer(i, language, True)}; // {i['label']}" for i in constants)
-        lines.extend(f"let {i['id']}: {_ts_type(i['type'])} = {_initializer(i, language)}; // {scope_label(i['scope'])}: {i['label']}" for i in variables)
+        lines.extend(f"const {i['id']}: {_ts_type(i['type'])} = {initialize(i, language, True)}; // {i['label']}" for i in constants)
+        lines.extend(f"let {i['id']}: {_ts_type(i['type'])} = {initialize(i, language)}; // {scope_label(i['scope'])}: {i['label']}" for i in variables)
         for api in model["apis"]:
             params = ", ".join(f"{p['id']}: {_ts_type(p['type'])}" for p in api["parameters"])
-            lines += ["", f"function {api['id']}({params}): {_ts_type(api['return_type'])} {{", f"  throw new Error('未实现接口: {api['label']}');", "}"]
+            lines += ["", f"// {api['label']}", f"function {api['id']}({params}): {_ts_type(api['return_type'])} {{", "  throw new Error('DLL ABI 仅支持 Python/中文源码独立宿主；Node DLL 尚未开放');", "}"]
     groups = {}
     for item in scoped:
         if not item["owner"].isidentifier():
             raise DataError("owner must be a code identifier")
         groups.setdefault((item["scope"], item["owner"]), []).append(item)
     for (scope, owner), members in groups.items():
+        if scope == 'local':
+            prefix = '# ' if language == 'python' else '// '
+            lines += ['', prefix + '局部声明由 IDE 注入子程序 ' + owner]
+            lines += [prefix + item['id'] + ' = ' + initialize(item, language, item in model['constants']) for item in members]
+            continue
         if language == "python":
             lines += ["", f"class {owner}:" if scope != "local" else f"def {owner}():"]
             for item in members:
-                lines.append(f"    {item['id']} = {_initializer(item, language, item in model['constants'])}")
+                lines.append(f"    {item['id']} = {initialize(item, language, item in model['constants'])}")
         else:
             lines += ["", f"const {owner} = {{" if scope != "local" else f"function {owner}() {{"]
             for item in members:
-                expression = _initializer(item, language, item in model["constants"])
+                expression = initialize(item, language, item in model["constants"])
                 lines.append(f"  {item['id']}: {expression}," if scope != "local" else f"  let {item['id']} = {expression};")
             lines.append("};" if scope != "local" else "}")
     return "\n".join(lines).rstrip() + "\n"

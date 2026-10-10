@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .paths import Paths, atomic_write_json, read_json
-from .processes import ChildLog, ProcessJob, child_environment, host_command
+from .processes import ChildLog, ProcessJob, child_environment, host_command, write_protocol
 
 ALLOWED_KINDS = {"python", "native", "dotnet", "dex-remote"}
 PLUGIN_LIMIT = 4
@@ -133,8 +133,11 @@ class PluginSession:
             payload = json.dumps({"id": request_id, "command": command, **values})
             if len(payload) > PROTOCOL_LIMIT:
                 raise PluginError("plugin request exceeds limit")
-            self.process.stdin.write(payload + "\n")
-            self.process.stdin.flush()
+            try:
+                write_protocol(self.process, payload, self.job.close, min(timeout, 3))
+            except TimeoutError as exc:
+                self.close(graceful=False)
+                raise PluginError(str(exc)) from exc
             try:
                 result = self.responses.get(timeout=timeout)
             except queue.Empty as exc:
@@ -168,7 +171,7 @@ class PluginSession:
             self.process.wait(timeout=3)
         except subprocess.TimeoutExpired:
             self.process.kill()
-            self.process.wait()
+            self.process.wait(timeout=3)
         if getattr(self, "reader", None) and self.reader is not threading.current_thread():
             self.reader.join(3)
         if getattr(self, "log_reader", None):

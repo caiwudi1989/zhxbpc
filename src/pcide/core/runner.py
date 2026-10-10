@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .paths import Paths, node_runtime
-from .processes import ChildLog, ProcessJob, child_environment, host_command
+from .processes import ChildLog, ProcessJob, child_environment, host_command, write_protocol
 from .project import Project
 
 
@@ -44,6 +44,8 @@ class ScriptRunner:
 
     def start(self, project, on_line=None, on_done=None, timeout=None, on_message=None,
               debug=False, breakpoints=None, keep_alive=False, events=None):
+        if project.manifest['language'] not in {'python','zhxb','javascript','typescript'}:
+            raise ValueError('脚本运行器只支持四种脚本语言；通用软件使用系统工具/引擎入口')
         with self.lock:
             if self.active:
                 raise RuntimeError("script session already active")
@@ -91,8 +93,7 @@ class ScriptRunner:
                 self.state.pid, self.state.status = self.process.pid, "running"
                 request = {"project": str(project.root), "session": session, "debug": debug,
                            "breakpoints": breakpoints, "keep_alive": keep_alive, "events": events}
-                self.process.stdin.write(json.dumps(request) + "\n")
-                self.process.stdin.flush()
+                write_protocol(self.process, json.dumps(request), self.job.close)
                 if self.stop_requested:
                     self.stop()
                 def timed_out():
@@ -157,7 +158,7 @@ class ScriptRunner:
                     self.process.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     self.process.kill()
-                    self.process.wait()
+                    self.process.wait(timeout=3)
                 for stream in (self.process.stdin, self.process.stdout):
                     if stream:
                         stream.close()
@@ -173,8 +174,7 @@ class ScriptRunner:
             if not self.process or self.process.poll() is not None:
                 raise RuntimeError("script session is not running")
             payload = json.dumps({"session": self.session, "command": command, **values})
-            self.process.stdin.write(payload + "\n")
-            self.process.stdin.flush()
+            write_protocol(self.process, payload, self.job.close)
 
     def event(self, handler, payload=None):
         request_id = uuid.uuid4().hex

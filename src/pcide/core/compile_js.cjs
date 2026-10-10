@@ -1,6 +1,6 @@
 'use strict';
 const fs = require('node:fs'), Module = require('node:module');
-const [sourcePath, outputPath, tsPath, bytecodePath, language, handlersJson] = process.argv.slice(2);
+const [sourcePath, outputPath, tsPath, bytecodePath, language, handlersJson, projectRoot] = process.argv.slice(2);
 const ts = require(tsPath), bytenode = require(bytecodePath);
 const text = fs.readFileSync(sourcePath, 'utf8');
 const file = ts.createSourceFile(sourcePath, text, ts.ScriptTarget.Latest, true,
@@ -10,8 +10,9 @@ const names = [];
 for (const node of file.statements) {
   if (ts.isFunctionDeclaration(node) && node.name) names.push(node.name.text);
 }
-let source = text;
-if (language === 'typescript') {
+const prepared = require('./source_contract.cjs').prepare(ts,text,sourcePath,projectRoot||require('node:path').dirname(sourcePath),language);
+let source = prepared.source;
+if (language === 'typescript' && !projectRoot) {
   const result = ts.transpileModule(text, {compilerOptions: {target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS}, fileName: sourcePath, reportDiagnostics: true});
   const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error);

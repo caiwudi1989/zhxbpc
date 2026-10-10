@@ -7,10 +7,10 @@ import time
 import unittest
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QTableWidget, QTableWidgetItem
 
 from pcide.core.project import Project
 from pcide.core.paths import Paths
@@ -31,6 +31,7 @@ class UiTests(WorkspaceCase):
         super().setUp()
         self.window = MainWindow(self.project(), Paths().ensure())
         self.window.show()
+        self.window.show_page('code')
         self.until(lambda: self.window.editor.loaded)
 
     def tearDown(self):
@@ -48,6 +49,186 @@ class UiTests(WorkspaceCase):
             QTest.qWait(10)
         self.fail("Qt operation did not complete")
 
+    def test_support_catalog_configuration_search_and_source_admission(self):
+        from pcide.ui.library_dialog import LibraryDialog
+        from pcide.core.libraries import load_libraries
+        window=self.window
+        def labels(item):
+            return [item.text(0)]+[label for index in range(item.childCount()) for label in labels(item.child(index))]
+        names=[label for index in range(window.support_library.topLevelItemCount()) for label in labels(window.support_library.topLevelItem(index))]
+        self.assertIn('库定义数据类型',names)
+        self.assertIn('库定义常量',names)
+        self.assertNotIn('项目数据',names)
+        self.assertNotIn('窗口_重绘',names)
+        window.support_search.setText('取绝对值')
+        self.assertFalse(window.support_library.topLevelItem(0).isHidden())
+        self.assertTrue(window.support_library.topLevelItem(1).isHidden())
+        dialog=LibraryDialog(window.project,window,page=1)
+        dialog.changed.connect(window._libraries_changed)
+        source=self.temp/'math.py'
+        source.write_text('def answer():\n    return 42\n',encoding='utf-8')
+        dialog.source.setText(str(source))
+        dialog.identity.setText('计算库')
+        dialog.admit()
+        self.assertEqual(dialog.example.toPlainText(),'计算库.answer()')
+        self.assertIn('计算库.answer',[item['label'] for item in window._completion_items()])
+        dialog.system_boxes['system.window'].setChecked(False)
+        dialog.save_configuration()
+        self.assertEqual(load_libraries(window.project)['system'],['system.core'])
+        dialog.close()
+
+    def test_data_groups_show_specific_fields_and_scoped_completion(self):
+        window=self.window
+        data={'variables':[{'id':'value','label':'窗口值','type':'整数型','scope':'window','owner':'main','default':'2'}],
+              'types':[{'id':'Record','label':'记录','members':[]}]}
+        window.project.save_data(data)
+        window.data_panel.load(data)
+        window._refresh_data_summary()
+        window.data_panel.select_group('window')
+        self.assertFalse(window.data_panel.table.isColumnHidden(10))
+        self.assertTrue(window.data_panel.table.isColumnHidden(6))
+        self.assertIn('main.value',[item['label'] for item in window._completion_items()])
+        window.data_panel.select_group('types')
+        self.assertFalse(window.data_panel.table.isColumnHidden(6))
+        self.assertTrue(window.data_panel.table.isColumnHidden(4))
+
+    def test_new_variable_dialog_accepts_type_default_owner_and_array(self):
+        from PySide6.QtWidgets import QLineEdit, QComboBox
+        panel=self.window.data_panel
+        panel.select_group('window')
+        errors=[]
+        def fill():
+            dialog=QApplication.activeModalWidget()
+            try:
+                dialog.findChild(QLineEdit,'label').setText('计数')
+                dialog.findChild(QComboBox,'type').setCurrentText('整数型')
+                dialog.findChild(QLineEdit,'value').setText('3')
+                dialog.findChild(QLineEdit,'array').setText('2,3')
+                dialog.findChild(QComboBox,'owner').setCurrentText('main')
+                dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok).click()
+                if dialog.isVisible():
+                    errors.append('data admission was rejected')
+                    dialog.reject()
+            except Exception as exc:
+                errors.append(str(exc))
+                dialog.reject()
+        QTimer.singleShot(30,fill)
+        panel._add('variable')
+        self.assertFalse(errors,errors)
+        item=self.window.project.load_data()['variables'][0]
+        self.assertEqual((item['type'],item['default'],item['array'],item['owner']),('整数型','3','2,3','main'))
+
+    def test_type_members_array_and_combo_after_deleting_middle_row(self):
+        from PySide6.QtWidgets import QComboBox, QToolButton
+        panel=self.window.data_panel
+        panel.load({'types':[{'id':'Record','label':'记录','members':[{'id':name,'label':name,'type':'文本型'} for name in ['a','b','c']]}]})
+        panel.select_group('types')
+        panel.table.selectRow(0)
+        errors=[]
+        def fill():
+            dialog=QApplication.activeModalWidget()
+            try:
+                table=dialog.findChild(QTableWidget)
+                table.selectRow(1)
+                next(button for button in dialog.findChildren(QToolButton) if button.text()=='删除').click()
+                table.cellWidget(1,2).setCurrentText('整数型')
+                table.item(1,5).setText('2,3')
+                dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok).click()
+                if dialog.isVisible():
+                    errors.append('member dialog rejected input')
+                    dialog.reject()
+            except Exception as exc:
+                errors.append(str(exc))
+                dialog.reject()
+        QTimer.singleShot(30,fill)
+        panel._edit_members()
+        self.assertFalse(errors,errors)
+        member=self.window.project.load_data()['types'][0]['members'][1]
+        self.assertEqual((member['id'],member['type'],member['array']),('c','整数型','2,3'))
+
+    def test_parameter_dialog_updates_real_signature_and_keeps_local_body(self):
+        from pcide.ui.parameter_dialog import ParameterDialog
+        from pcide.core.routine_signatures import parameter_details
+        window=self.window
+        source='def work(value: int):\n    local = value + 1\n    return local\n'
+        path=window.project.entry_path
+        path.write_text(source,encoding='utf-8')
+        window.editor.load(path)
+        window.editor.set_value(source)
+        self.until(lambda: window.editor.documents[str(path)]==source)
+        errors=[]
+        def fill():
+            dialog=QApplication.activeModalWidget()
+            if not isinstance(dialog,ParameterDialog):
+                QTimer.singleShot(20,fill)
+                return
+            try:
+                dialog.table.item(0,2).setText('4')
+                dialog.table.item(0,3).setCheckState(Qt.CheckState.Checked)
+                dialog.table.item(0,5).setText('调用输入')
+                dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok).click()
+                if dialog.isVisible():
+                    errors.append(dialog.error.text())
+                    dialog.reject()
+            except Exception as exc:
+                errors.append(str(exc))
+                dialog.reject()
+        QTimer.singleShot(20,fill)
+        window.edit_routine_parameters(str(path),1)
+        self.until(lambda:'value: int=4' in path.read_text(encoding='utf-8') or bool(errors))
+        self.assertFalse(errors,errors)
+        saved=path.read_text(encoding='utf-8')
+        self.assertIn('local = value + 1',saved)
+        self.assertTrue(parameter_details(saved,'.py','work')[0]['optional'])
+        self.assertEqual(next(iter(window._routine_metadata_index().values()))['parameterNotes']['value'],'调用输入')
+
+    def test_shortcuts_have_no_collisions_and_switch_view_without_closing_project(self):
+        from PySide6.QtGui import QAction
+        actions=self.window.findChildren(QAction)
+        seen={}
+        for action in actions:
+            shortcut=action.shortcut().toString()
+            if not shortcut:
+                continue
+            self.assertNotIn(shortcut,seen,shortcut)
+            seen[shortcut]=action
+        self.assertEqual(seen['Ctrl+W'].text(),'关闭当前代码页')
+        self.assertEqual(seen['Ctrl+Alt+P'].text(),'编辑当前子程序参数')
+        self.assertEqual(seen['Del'].shortcutContext(),Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.window.workspace_tabs.setCurrentWidget(self.window.designer)
+        self.window.designer.setFocus()
+        QTest.keyClick(self.window.designer,Qt.Key.Key_E,Qt.KeyboardModifier.ControlModifier)
+        self.until(lambda:self.window.workspace_tabs.currentWidget() is self.window.tabs)
+        self.assertFalse(self.window._project_closed)
+
+    def test_dll_import_parameters_are_edited_as_a_table(self):
+        from pcide.ui.library_dialog import LibraryDialog
+        from PySide6.QtWidgets import QToolButton
+        dialog=LibraryDialog(self.window.project,self.window,page=1)
+        dialog.dll_entry.setText('example_export')
+        errors=[]
+        def fill():
+            modal=QApplication.activeModalWidget()
+            try:
+                next(button for button in modal.findChildren(QToolButton) if button.text()=='添加参数').click()
+                table=modal.findChild(QTableWidget)
+                table.item(0,0).setText('数值')
+                table.item(0,1).setText('value')
+                table.cellWidget(0,2).setCurrentText('int32')
+                modal.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok).click()
+                if modal.isVisible():
+                    errors.append('DLL parameter declaration was rejected')
+                    modal.reject()
+            except Exception as exc:
+                errors.append(str(exc))
+                modal.reject()
+        QTimer.singleShot(30,fill)
+        dialog.edit_dll_parameters()
+        self.assertFalse(errors,errors)
+        self.assertEqual(json.loads(dialog.parameters.text())[0]['type'],'int32')
+        self.assertIn('1 项',dialog.parameter_button.text())
+        dialog.close()
+
     def test_editor_python_projection_regex_is_unicode_safe(self):
         """The Monaco bundle must parse before it can create the code model."""
         source = (Path(__file__).resolve().parents[1] / "src" / "pcide" / "ui" / "editor.html").read_text(encoding="utf-8")
@@ -58,12 +239,12 @@ class UiTests(WorkspaceCase):
     def test_editor_routine_zone_is_after_declaration(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "pcide" / "ui" / "editor.html").read_text(encoding="utf-8")
         self.assertIn("afterLineNumber:index+1", source)
-        self.assertIn("editor.setHiddenAreas(hidden)", source)
+        self.assertIn("editor.setHiddenAreas(merged.map", source)
         self.assertIn("showFoldingControls:'never'", source)
         self.assertIn("lineNumbers:lineNumber=>hiddenLineNumbers.has(lineNumber)?'':String(lineNumber)", source)
         self.assertIn("routine-line-number", source)
         self.assertIn(r"\.子程序\s+", source)
-        self.assertIn("if(currentLanguage==='zhxb')return text", source)
+        self.assertIn("if(currentLanguage!=='python')return text", source)
         self.assertIn("startupRoutines=Array.isArray(data.startupRoutines)", source)
         self.assertIn("routine-local-name", source)
         self.assertIn("逻辑型(布尔型)", source)
@@ -86,6 +267,138 @@ class UiTests(WorkspaceCase):
         self.assertEqual(value["name"], "软件启动")
         self.assertEqual(value["locals"][0]["name"], "启动参数")
 
+    def test_startup_title_stays_editable_and_tree_uses_custom_label(self):
+        source = (Path(__file__).resolve().parents[1] / "src" / "pcide" / "ui" / "editor.html").read_text(encoding="utf-8")
+        self.assertIn("name.readOnly=false", source)
+        self.assertIn("name.disabled=false", source)
+        self.assertNotIn("routine-name.locked", source)
+        line = self.window.project.entry_path.read_text(encoding="utf-8").splitlines().index("def on_main_form_load(event=None):") + 1
+        self.window._save_routine_metadata(str(self.window.project.entry_path), json.dumps({
+            "line": line, "name": "软件启动", "sourceName": "on_main_form_load", "startup": True,
+            "returnType": "", "public": False, "remark": "", "locals": []
+        }, ensure_ascii=False))
+        saved = self.window._routine_metadata_index()
+        self.assertIn(f"src/main.py:{line}", saved)
+        self.assertEqual(self.window.routine_list.topLevelItem(0).text(0), "软件启动")
+        self.assertEqual(self.window.routine_list.topLevelItem(0).text(1), f"第 {line} 行")
+        self.assertEqual(self.window._startup_routine_names(), ["on_main_form_load"])
+
+    def test_program_data_table_rename_and_delete_are_stable(self):
+        data = {"version": 1, "variables": [{"id": "count", "label": "数量", "type": "整数", "default": "1", "scope": "global"}],
+                "constants": [], "apis": [], "types": []}
+        self.window.data_panel.load(data)
+        self.window.data_panel.select_group("global")
+        self.window.data_panel.table.item(0, 1).setText("total_count")
+        self.until(lambda: self.window.project.load_data()["variables"][0]["id"] == "total_count")
+        self.window.data_panel.table.selectRow(0)
+        self.window.data_panel._delete()
+        self.assertEqual(self.window.project.load_data()["variables"], [])
+
+    def test_toolbox_menu_and_display_modes(self):
+        menu = self.window.toolbox.menu(self.window)
+        self.assertGreaterEqual(len(menu.actions()), 4)
+        self.window.toolbox.set_display_mode("icon")
+        self.assertEqual(self.window.toolbox._display_mode, "icon")
+        self.assertFalse(self.window.toolbox.topLevelItem(0).child(0).icon(0).isNull())
+        self.window.toolbox.set_display_mode("text")
+        self.assertTrue(self.window.toolbox.topLevelItem(0).child(0).icon(0).isNull())
+
+    def test_program_data_switches_project_save_target_and_navigation(self):
+        old = self.window.project
+        new = self.project('second')
+        self.window._switch(new)
+        self.window.data_panel.load({'variables': [{'id': 'count', 'label': '数量', 'type': '整数型', 'default': '1', 'scope': 'global'}]})
+        self.window.data_panel.select_group('global')
+        self.window.data_panel.table.item(0, 4).setText('2')
+        self.assertEqual(new.load_data()['variables'][0]['default'], '2')
+        self.assertEqual(old.load_data()['variables'], [])
+        self.assertIs(self.window.data_panel.project, new)
+        self.assertTrue(any(item['label'] == 'count' for item in self.window._completion_items()))
+        self.window.data_panel.table.item(0, 4).setText('invalid')
+        self.assertEqual(self.window.data_panel.table.item(0, 4).text(), '2')
+        section = next(self.window.project_tree.topLevelItem(index) for index in range(self.window.project_tree.topLevelItemCount())
+                       if self.window.project_tree.topLevelItem(index).text(0) == '变量 / 常量')
+        self.window._open_program_item(section.child(0).child(0))
+        self.assertIs(self.window.tabs.currentWidget(), self.window.data_panel)
+        self.assertEqual(self.window.data_panel.table.currentRow(), 0)
+
+    def test_native_routine_edit_save_local_scope_and_ordinary_rename(self):
+        if not self.window.editor._fallback:
+            self.skipTest('native procedure table')
+        panel = self.window.editor.routine_panel
+        self.assertFalse(panel.name.isReadOnly())
+        panel.name.setText('软件启动')
+        panel.publish()
+        self.assertEqual(self.window._routine_metadata_index()[f'src/main.py:{panel.value["line"]}']['name'], '软件启动')
+        self.assertEqual(self.window._startup_routine_names(), ['on_main_form_load'])
+        panel.add_local()
+        panel.locals.item(0, 0).setText('专属变量')
+        self.assertFalse(any(item['label'] == '专属变量' for item in self.window._completion_items()))
+        original = self.window.editor.documents[self.window.editor.path]
+        self.assertIn('def on_main_form_load', original)
+        self.assertEqual(self.window.editor.view.toPlainText(), original)
+        declaration = original.splitlines().index('def on_main_form_load(event=None):')
+        self.assertFalse(self.window.editor.view.document().findBlockByNumber(declaration).isVisible())
+        self.window._save_now()
+        self.window.editor.load(self.window.project.entry_path)
+        self.assertEqual(panel.name.text(), '软件启动')
+        second = panel.selector.findData('on_Button1_click')
+        panel.selector.setCurrentIndex(second)
+        panel.name.setText('on_run_click')
+        panel.publish()
+        self.assertIn('def on_run_click', self.window.editor.documents[self.window.editor.path])
+        self.assertEqual(self.window.designer.form['controls'][0]['events']['click'], 'on_run_click')
+        self.window._save_now()
+        self.assertIn('def on_run_click', self.window.project.entry_path.read_text(encoding='utf-8'))
+        self.assertEqual(self.window.project.load_form()['controls'][0]['events']['click'], 'on_run_click')
+
+    def test_toolbox_menu_adds_actual_control_and_secondary_load_is_not_startup(self):
+        menu = self.window.toolbox.menu(self.window)
+        action = menu.actions()[0].menu().actions()[0]
+        before = len(self.window.designer.form['controls'])
+        action.trigger()
+        self.assertEqual(len(self.window.designer.form['controls']), before+1)
+        self.assertEqual(self.window.designer.form['controls'][-1]['type'], action.data())
+        secondary = copy.deepcopy(self.window.project.load_form())
+        secondary['form']['events']['load'] = 'on_secondary_load'
+        self.window.project.save_window('secondary.form.json', secondary)
+        self.window.current_form_path = self.window.project.root / 'ui/secondary.form.json'
+        self.window.designer.load(secondary)
+        self.assertEqual(self.window._startup_routine_names(), ['on_main_form_load'])
+
+    def test_type_member_dialog_saves_structured_members(self):
+        panel = self.window.data_panel
+        panel.load({'types':[{'id':'Record','label':'记录','members':[]}]})
+        panel.select_group('types')
+        panel.table.selectRow(0)
+        errors = []
+        def fill():
+            dialog = QApplication.activeModalWidget()
+            try:
+                self.assertIsInstance(dialog,QDialog)
+                table = dialog.findChild(QTableWidget)
+                table.setRowCount(1)
+                for column, value in enumerate(['文本','text','文本型','hello','成员备注']):
+                    table.setItem(0,column,QTableWidgetItem(value))
+                dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok).click()
+            except Exception as exc:
+                errors.append(str(exc))
+                if dialog:
+                    dialog.reject()
+        def escape():
+            dialog = QApplication.activeModalWidget()
+            if dialog:
+                errors.append('member dialog did not accept')
+                dialog.reject()
+        QTimer.singleShot(20,fill)
+        QTimer.singleShot(1500,escape)
+        panel._edit_members()
+        self.assertFalse(errors,errors)
+        member = self.window.project.load_data()['types'][0]['members'][0]
+        self.assertEqual(member['id'],'text')
+        self.assertEqual(member['default'],'hello')
+        self.assertEqual(member['description'],'成员备注')
+
     def test_visible_code_pane_has_source_and_fitting_routine_tables(self):
         self.window.tabs.setCurrentWidget(self.window.editor)
         self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
@@ -97,14 +410,83 @@ class UiTests(WorkspaceCase):
         self.until(lambda: self.javascript("document.querySelectorAll('.routine-zone').length") >= 2)
         self.assertEqual(self.javascript("JSON.stringify([...document.querySelectorAll('.routine-zone')[0].querySelectorAll('input')].map(x=>x.className))"), '["routine-name","routine-public","routine-remark"]')
         self.assertEqual(self.javascript("document.querySelector('.routine-zone .routine-return').tagName"), "SELECT")
-        self.assertTrue(int(self.javascript("document.querySelector('.routine-zone .routine-line-number').textContent")) >= 1)
-        layout = json.loads(self.javascript("JSON.stringify([...document.querySelectorAll('.routine-zone')].map(node=>({"
+        self.assertTrue(int(self.javascript("document.querySelector('.routine-gutter .routine-line-number').textContent")) >= 1)
+        metrics = ("JSON.stringify([...document.querySelectorAll('.routine-zone')].map(node=>({"
             "zoneBottom:node.getBoundingClientRect().bottom,"
-            "bottom:node.lastElementChild.getBoundingClientRect().bottom"
-            "})))"))
+            "bottom:node.querySelector('.routine-frame').getBoundingClientRect().bottom"
+            "})))")
+        # WebEngine applies ResizeObserver/view-zone measurements on the next frame.
+        # The DOM can exist before those geometry updates, especially during builds.
+        self.until(lambda: all(0 <= block['zoneBottom'] - block['bottom'] <= 6
+                               for block in json.loads(self.javascript(metrics))))
+        layout = json.loads(self.javascript(metrics))
         self.assertGreaterEqual(len(layout), 2)
         for block in layout:
             self.assertLessEqual(block["bottom"], block["zoneBottom"], block)
+            self.assertLessEqual(block["zoneBottom"] - block["bottom"], 6, block)
+
+    def test_routine_layout_is_compact_resizes_and_preserves_edits(self):
+        if self.window.editor._fallback:
+            self.skipTest('Monaco inline procedure geometry')
+        self.window.tabs.setCurrentWidget(self.window.editor)
+        self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+        self.until(lambda: self.javascript("document.querySelectorAll('.routine-zone').length") >= 2)
+        metrics = "JSON.stringify((()=>{const n=document.querySelector('.routine-zone');return {height:n.getBoundingClientRect().height,frame:n.querySelector('.routine-frame').getBoundingClientRect().height,widths:[...n.querySelectorAll('table:not([hidden])')].map(t=>t.getBoundingClientRect().width),toggleInName:n.querySelector('.routine-name-cell').contains(n.querySelector('.routine-toggle')),duplicateTitles:n.querySelectorAll('.routine-bar').length};})())"
+        self.until(lambda: 0 <= json.loads(self.javascript(metrics))['height'] - json.loads(self.javascript(metrics))['frame'] <= 6)
+        initial = json.loads(self.javascript(metrics))
+        self.assertTrue(initial['toggleInName'])
+        self.assertEqual(initial['duplicateTitles'], 0)
+        self.assertLessEqual(max(initial['widths'])-min(initial['widths']), 1)
+        point = json.loads(self.javascript("JSON.stringify((()=>{const r=document.querySelector('.routine-name').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})())"))
+        view = self.window.editor.view
+        self.javascript("window.pcideMouse=[];document.addEventListener('mousedown',e=>window.pcideMouse.push({x:e.clientX,y:e.clientY,target:e.target.className}),true);'ok'")
+        target = view.focusProxy() or view
+        # WebEngine's render delegate consumes viewport coordinates directly.
+        click_point = QPoint(round(point['x']),round(point['y']))
+        QTest.mouseClick(target, Qt.MouseButton.LeftButton, pos=click_point)
+        QTest.qWait(100)
+        self.assertEqual(self.javascript("document.activeElement.className"), 'routine-name',
+                         {'point':point,'events':self.javascript('JSON.stringify(window.pcideMouse)'),
+                          'hit':self.javascript(f"document.elementFromPoint({point['x']},{point['y']})?.className")})
+        QTest.keyClick(target, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+        QTest.keyClicks(target, 'launch_label')
+        QTest.keyClick(target, Qt.Key.Key_Tab)
+        self.until(lambda: self.javascript("document.querySelector('.routine-name').value") == 'launch_label')
+        self.until(lambda: any(item['name']=='launch_label' for item in self.window._routine_metadata_index().values()))
+        self.javascript("document.querySelector('.routine-remark').value='saved remark';document.querySelector('.routine-remark').dispatchEvent(new Event('input',{bubbles:true}));'ok'")
+        for index in range(3):
+            self.javascript("document.querySelector('.routine-add-local').click();'ok'")
+            self.javascript(f"(()=>{{const r=document.querySelector('.routine-locals tbody').lastElementChild;r.querySelector('.routine-local-name').value='local_{index}';r.querySelector('.routine-local-name').dispatchEvent(new Event('input',{{bubbles:true}}));}})();'ok'")
+        self.until(lambda: json.loads(self.javascript(metrics))['height'] > initial['height'] + 60)
+        populated = json.loads(self.javascript(metrics))
+        self.assertLessEqual(populated['height']-populated['frame'], 6)
+        self.assertLessEqual(max(populated['widths'])-min(populated['widths']), 1)
+        self.javascript("document.querySelector('.routine-toggle').click();'ok'")
+        self.until(lambda: json.loads(self.javascript(metrics))['height'] < 40)
+        self.javascript("document.querySelector('.routine-toggle').click();'ok'")
+        self.until(lambda: json.loads(self.javascript(metrics))['height'] > initial['height'] + 60)
+        self.assertEqual(self.javascript("document.querySelector('.routine-name').value"), 'launch_label')
+        self.assertEqual(self.javascript("document.querySelector('.routine-remark').value"), 'saved remark')
+        original_source = self.window.project.entry_path.read_text(encoding='utf-8')
+        self.window.editor.set_value('\n' + original_source)
+        self.until(lambda: self.javascript("document.querySelector('.routine-name')?.value") == 'launch_label')
+        self.assertEqual(self.javascript("document.querySelectorAll('.routine-zone')[0].querySelectorAll('.routine-local-name').length"), 3)
+        for _ in range(3):
+            self.javascript("document.querySelector('.routine-remove-local').click();'ok'")
+        self.until(lambda: abs(json.loads(self.javascript(metrics))['height']-initial['height']) <= 2)
+        self.window.editor.set_value(original_source)
+        self.until(lambda: self.javascript("document.querySelector('.routine-name')?.value") == 'launch_label')
+        self.assertEqual(self.javascript("document.querySelectorAll('.routine-zone')[0].querySelectorAll('.routine-local-name').length"), 0)
+        other = self.window.project.root / 'src/switch.py'
+        other.write_text('value=1\n',encoding='utf-8')
+        self.window.editor.load(other)
+        self.until(lambda: self.javascript("document.querySelectorAll('.routine-zone').length") == 0)
+        self.window.editor.load(self.window.project.entry_path)
+        self.until(lambda: self.javascript("document.querySelector('.routine-name')?.value") == 'launch_label')
+        self.assertEqual(self.javascript("document.querySelector('.routine-remark').value"), 'saved remark')
+        self.assertEqual(self.window.project.load_form()['form']['events']['load'], 'on_main_form_load')
+        snapshot = json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))
+        self.assertEqual(snapshot['text'],self.window.project.entry_path.read_text(encoding='utf-8'))
 
     def test_routine_metadata_can_collapse_and_expand(self):
         if self.window.editor._fallback:
@@ -112,12 +494,176 @@ class UiTests(WorkspaceCase):
         self.window.tabs.setCurrentWidget(self.window.editor)
         self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
         self.until(lambda: self.javascript("document.querySelectorAll('.routine-toggle').length") >= 2)
+        original = json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['text']
+        body_line = original.splitlines().index('def on_main_form_load(event=None):')+2
+        self.until(lambda: '主窗体已加载' in self.javascript("document.querySelector('.view-lines').textContent"))
         self.javascript("document.querySelector('.routine-toggle').click(); 'clicked'")
         self.until(lambda: self.javascript("document.querySelector('.routine-toggle').textContent") == "▸")
         self.assertEqual(self.javascript("document.querySelector('.routine-content').hidden"), True)
+        self.until(lambda: '主窗体已加载' not in self.javascript("document.querySelector('.view-lines').textContent"))
+        snapshot = json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))
+        self.assertIn(body_line, snapshot['hiddenLines'])
+        self.assertEqual(snapshot['text'], original)
+        self.assertIn('ocr_mock', self.javascript("document.querySelector('.view-lines').textContent"))
+        self.javascript("document.querySelectorAll('.routine-toggle')[1].click();'ok'")
+        self.until(lambda: 'ocr_mock' not in self.javascript("document.querySelector('.view-lines').textContent"))
+        self.until(lambda: '脚本已就绪' not in self.javascript("document.querySelector('.view-lines').textContent"))
+        self.assertEqual(self.javascript("document.querySelectorAll('.routine-name').length"), 2)
         self.javascript("document.querySelector('.routine-toggle').click(); 'clicked'")
         self.until(lambda: self.javascript("document.querySelector('.routine-toggle').textContent") == "▾")
         self.assertEqual(self.javascript("document.querySelector('.routine-content').hidden"), False)
+        self.until(lambda: '主窗体已加载' in self.javascript("document.querySelector('.view-lines').textContent"))
+        self.until(lambda: '脚本已就绪' in self.javascript("document.querySelector('.view-lines').textContent"))
+        self.assertNotIn('ocr_mock', self.javascript("document.querySelector('.view-lines').textContent"))
+        self.window.editor.save()
+        self.assertEqual(self.window.project.entry_path.read_text(encoding='utf-8'),original)
+
+    def test_control_double_click_enters_expanded_routine_body(self):
+        editor = self.window.editor
+        source = editor.documents[editor.path]
+        declaration = source.splitlines().index('def on_Button1_click(event=None):')+1
+        if editor._fallback:
+            panel = editor.routine_panel
+            panel.selector.setCurrentIndex(panel.selector.findData('on_Button1_click'))
+            panel.collapse()
+        else:
+            self.window.tabs.setCurrentWidget(editor)
+            self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+            self.until(lambda: self.javascript("document.querySelectorAll('.routine-toggle').length") == 2)
+            self.javascript("document.querySelectorAll('.routine-toggle')[1].click();'ok'")
+        self.window.tabs.setCurrentWidget(self.window.designer)
+        self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+        designer = self.window.designer
+        item = designer.items_by_id['Button1']
+        point = designer.mapFromScene(item.pos()+QPointF(20,15))
+        QTest.mouseDClick(designer.viewport(),Qt.MouseButton.LeftButton,pos=point)
+        self.until(lambda: self.window.tabs.currentWidget() is editor)
+        self.until(lambda: json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['position']['lineNumber'] == declaration+1)
+        snapshot = json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))
+        self.assertEqual(snapshot['text'],source)
+        if editor._fallback:
+            self.assertTrue(editor.view.document().findBlockByNumber(declaration).isVisible())
+            self.assertTrue(editor.view.hasFocus())
+            self.assertNotIn(panel.collapse_key('on_Button1_click'),panel.collapsed)
+        else:
+            self.assertFalse(snapshot['routines'][1]['collapsed'])
+            self.assertNotIn(declaration+1,snapshot['hiddenLines'])
+            self.until(lambda: 'ocr_mock' in self.javascript("document.querySelector('.view-lines').textContent"))
+            self.assertGreater(snapshot['position']['column'],1)
+
+    def test_typing_and_newlines_preserve_routine_widgets(self):
+        editor = self.window.editor
+        self.window.tabs.setCurrentWidget(editor)
+        self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+        self.window.goto_event('Button1','click')
+        self.until(lambda: json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['position']['lineNumber'] == 7)
+        if editor._fallback:
+            panel = editor.routine_panel
+            rendered = panel._render_signature
+            panel.return_type.setProperty('preserved',True)
+            target = editor.view
+        else:
+            self.javascript("window.preservedZones=[...document.querySelectorAll('.routine-zone')];window.zoneMutations=0;window.zoneObserver=new MutationObserver(records=>{for(const r of records)for(const n of [...r.addedNodes,...r.removedNodes])if(n.nodeType===1&&(n.matches('.routine-zone')||n.querySelector('.routine-zone')))window.zoneMutations++;});window.zoneObserver.observe(document.querySelector('.view-zones'),{childList:true,subtree:true});'ok'")
+            target = editor.view.focusProxy() or editor.view
+        QTest.keyClick(target,Qt.Key.Key_End)
+        QTest.keyClicks(target,' # typed')
+        QTest.keyClick(target,Qt.Key.Key_Return)
+        QTest.keyClicks(target,'# new line')
+        QTest.qWait(500)
+        snapshot = json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))
+        self.assertIn('# typed',snapshot['text'])
+        self.assertIn('# new line',snapshot['text'])
+        if editor._fallback:
+            self.assertEqual(panel._render_signature,rendered)
+            self.assertTrue(panel.return_type.property('preserved'))
+            self.assertTrue(editor.view.hasFocus())
+        else:
+            self.assertEqual(self.javascript('window.zoneMutations'),0)
+            self.assertTrue(self.javascript("window.preservedZones.every((n,i)=>n===document.querySelectorAll('.routine-zone')[i]&&n.isConnected)"))
+            self.assertTrue(self.javascript("window.preservedZones.every(n=>n.getBoundingClientRect().height>=50)"))
+            self.assertTrue(self.javascript("document.activeElement.classList.contains('inputarea')"))
+            self.javascript('window.zoneObserver.disconnect();\'ok\'')
+
+    def test_routine_code_ranges_in_all_editor_languages(self):
+        fixtures = {
+            '.py': 'def first(event=None):\n    if True:\n        print("FIRST_BODY")\n    note = """text\nnot_a_top_level_statement\n"""\n\ndef second(event=None):\n    print("SECOND_BODY")\n\nprint("TOP_LEVEL")\n',
+            '.js': 'function first(event) {\n    const note = `} template {`; // }\n    const regex = /[{}]/;\n    console.log("FIRST_BODY");\n}\nfunction second(event) {\n    console.log("SECOND_BODY");\n}\nconsole.log("TOP_LEVEL");\n',
+            '.ts': 'function first(event: unknown) {\n    const note: string = "}"; /* { */\n    console.log("FIRST_BODY");\n}\nfunction second(event: unknown) {\n    console.log("SECOND_BODY");\n}\nconsole.log("TOP_LEVEL");\n',
+            '.zhxb': '.版本 2\n.程序集 main\n.子程序 first\n输出("FIRST_BODY")\n.子程序 second\n输出("SECOND_BODY")\n',
+        }
+        for suffix, source in fixtures.items():
+            with self.subTest(suffix=suffix):
+                path = self.window.project.root / ('src/range'+suffix)
+                path.write_text(source,encoding='utf-8')
+                self.window.editor.load(path)
+                editor = self.window.editor
+                self.window.tabs.setCurrentWidget(editor)
+                self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+                if editor._fallback:
+                    panel = editor.routine_panel
+                    panel.selector.setCurrentIndex(panel.selector.findData('second'))
+                    second = next(r for r in panel.routines if r['sourceName']=='second')
+                    panel.collapse()
+                    self.assertFalse(editor.view.document().findBlockByNumber(second['bodyLine']-1).isVisible())
+                    panel.collapse()
+                    self.assertTrue(editor.view.document().findBlockByNumber(second['bodyLine']-1).isVisible())
+                else:
+                    self.until(lambda: self.javascript("document.querySelectorAll('.routine-name').length") == 2)
+                    self.javascript("document.querySelectorAll('.routine-toggle')[0].click();document.querySelectorAll('.routine-toggle')[1].click();'ok'")
+                    self.until(lambda: 'SECOND_BODY' not in self.javascript("document.querySelector('.view-lines').textContent"))
+                    self.assertNotIn('FIRST_BODY',self.javascript("document.querySelector('.view-lines').textContent"))
+                    if suffix!='.zhxb':
+                        self.assertIn('TOP_LEVEL',self.javascript("document.querySelector('.view-lines').textContent"))
+                    self.javascript("document.querySelectorAll('.routine-toggle')[1].click();'ok'")
+                    self.until(lambda: 'SECOND_BODY' in self.javascript("document.querySelector('.view-lines').textContent"))
+                    self.assertNotIn('FIRST_BODY',self.javascript("document.querySelector('.view-lines').textContent"))
+                self.assertEqual(json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['text'],source)
+
+    def test_startup_collapse_owns_file_initialization_and_separators(self):
+        fixtures = {
+            '.py': 'value = 1\n\ndef on_main_form_load(event=None):\n    print("LOAD_BODY")\n\ndef click(event=None):\n    print("CLICK_BODY")\n\nif __name__ == "__main__":\n    print("FILE_STARTUP")\n\n\n',
+            '.js': 'const value = 1;\nfunction on_main_form_load(event) {\n    console.log("LOAD_BODY");\n}\nfunction click(event) {\n    console.log("CLICK_BODY");\n}\nconsole.log("FILE_STARTUP");\n\n',
+            '.ts': 'const value: number = 1;\nfunction on_main_form_load(event: unknown) {\n    console.log("LOAD_BODY");\n}\nfunction click(event: unknown) {\n    console.log("CLICK_BODY");\n}\nconsole.log("FILE_STARTUP");\n\n',
+        }
+        editor = self.window.editor
+        self.window.tabs.setCurrentWidget(editor)
+        self.window.workspace_tabs.setCurrentWidget(self.window.tabs)
+        cases = [(suffix, source, trailing) for suffix, source in fixtures.items() for trailing in (True, False)]
+        visible = "getComputedStyle(document.querySelector('.view-lines')).visibility==='hidden'?'':document.querySelector('.view-lines').textContent"
+        for suffix, fixture, trailing in cases:
+            source = fixture if trailing else fixture.rstrip('\n')
+            with self.subTest(suffix=suffix,trailing_newline=trailing):
+                path = self.window.project.root / ('src/startup_scope_'+str(trailing)+suffix)
+                path.write_text(source,encoding='utf-8')
+                editor.load(path)
+                if editor._fallback:
+                    panel = editor.routine_panel
+                    self.assertEqual(panel.value['sourceName'],'on_main_form_load')
+                    startup_line = next(i for i,line in enumerate(source.splitlines()) if 'FILE_STARTUP' in line)
+                    self.assertTrue(editor.view.document().findBlockByNumber(startup_line).isVisible())
+                    panel.collapse()
+                    self.assertFalse(editor.view.document().findBlockByNumber(startup_line).isVisible())
+                    self.assertFalse(editor.view.isReadOnly())
+                    panel.collapse()
+                    self.assertTrue(editor.view.document().findBlockByNumber(startup_line).isVisible())
+                    self.assertFalse(editor.view.isReadOnly())
+                else:
+                    self.until(lambda: 'FILE_STARTUP' in self.javascript(visible))
+                    self.javascript("document.querySelectorAll('.routine-toggle[aria-expanded=\"true\"]').forEach(button=>button.click());'ok'")
+                    self.until(lambda: self.javascript(visible) == '')
+                    self.until(lambda: self.javascript("[...document.querySelectorAll('.routine-zone')].every(n=>n.getBoundingClientRect().height>=30)"))
+                    positions = json.loads(self.javascript("JSON.stringify([...document.querySelectorAll('.routine-zone')].map(n=>({top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom})))"))
+                    self.assertAlmostEqual(positions[0]['bottom'],positions[1]['top'],delta=2)
+                    self.assertEqual(self.javascript("document.querySelectorAll('.routine-name').length"),2)
+                    # Folding must not lock the whole source document.
+                    self.assertFalse(json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['readOnly'])
+                    self.assertEqual(json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['text'],source)
+                    self.javascript("document.querySelector('.routine-toggle').click();'ok'")
+                    self.until(lambda: 'FILE_STARTUP' in self.javascript(visible))
+                    self.assertNotIn('CLICK_BODY',self.javascript(visible))
+                self.assertEqual(json.loads(self.javascript('JSON.stringify(pcide.snapshot())'))['text'],source)
+                editor.save()
+                self.assertEqual(path.read_text(encoding='utf-8'),source)
 
     def test_routine_public_name_return_and_remark_are_editable(self):
         if self.window.editor._fallback:

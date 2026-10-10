@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "form": {
+    "title": "MainForm",
+    "width": 760,
+    "height": 440,
+    "background": "#ffffff",
+    "events": {
+      "load": "on_main_form_load"
+    },
+    "window": {
+      "maximize": true,
+      "minimize": true,
+      "resizable": true,
+      "fixed_width": null,
+      "fixed_height": null,
+      "min_width": 100,
+      "min_height": 100,
+      "max_width": 10000,
+      "max_height": 10000,
+      "anchor": "center",
+      "dock": "none",
+      "auto_fill": false
+    }
+  },
+  "controls": [
+    {
+      "id": "Button1",
+      "type": "Button",
+      "name": "Button1",
+      "x": 30,
+      "y": 30,
+      "width": 120,
+      "height": 34,
+      "parent": "",
+      "properties": {
+        "text": "运行事件",
+        "visible": true,
+        "enabled": true
+      },
+      "events": {
+        "click": "on_Button1_click"
+      }
+    },
+    {
+      "id": "Label1",
+      "type": "Label",
+      "name": "Label1",
+      "x": 30,
+      "y": 85,
+      "width": 260,
+      "height": 34,
+      "parent": "",
+      "properties": {
+        "text": "就绪",
+        "visible": true,
+        "enabled": true
+      },
+      "events": {}
+    }
+  ],
+  "grid": {
+    "enabled": true,
+    "size": 10,
+    "snap": true
+  }
+}

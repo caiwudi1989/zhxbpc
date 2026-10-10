@@ -40,6 +40,15 @@ function invoke(handler, payload={}) {
 }
 let entry;
 try {
+  require('node:vm').runInThisContext(require('./source_contract.cjs').dataSource(request.project),{timeout:Math.max(1,Math.round((manifest.execution?.timeout_seconds||60)*1000))});
+  for(const value of Object.values(require('./source_contract.cjs').contract(request.project).metadata)) {
+    if(!value?.public||!value.file||!value.sourceName)continue;
+    const target=path.resolve(request.project,value.file).replace(/\.(js|ts)$/,'.jsc');
+    if(!target.startsWith(path.join(request.project,'src')+path.sep))throw Error('公开子程序文件越界');
+    if(target===path.resolve(request.project,manifest.entry))continue;
+    if(Object.hasOwn(globalThis,value.sourceName))throw Error('公开子程序名称重复');
+    globalThis[value.sourceName]=(...args)=>{const module=require(target);if(typeof module[value.sourceName]!=='function')throw Error('公开接口不存在');return module[value.sourceName](...args);};
+  }
   entry = require(path.join(request.project, manifest.entry));
   send('ready');
   for (const handler of request.events || []) invoke(handler);

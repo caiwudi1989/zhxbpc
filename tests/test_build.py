@@ -126,3 +126,37 @@ class BuildTests(WorkspaceCase):
         self.assertIn("dotnet", report["output"])
         self.assertIn("42", report["output"])
 
+    def test_frozen_public_routines_locals_data_and_metadata_cache_invalidation(self):
+        from pcide.core.paths import atomic_write_json
+        for language, extension in [('python','py'),('zhxb','zhxb'),('javascript','js'),('typescript','ts')]:
+            with self.subTest(language=language):
+                project = self.project('metadata-'+language, language)
+                original = project.entry_path.read_text(encoding='utf-8')
+                project.entry_path.write_text(original + ('\n输出(add(count))\n' if language=='zhxb' else '\nprint(add(count))\n' if language=='python' else '\nconsole.log(add(count));\n'), encoding='utf-8')
+                library = project.root/f'src/library.{extension}'
+                library.write_text('.版本 2\n.子程序 add(value), 整数型, 公开\n返回(value + local_value)\n' if language=='zhxb' else
+                                   'def add(value):\n    return value + local_value\n' if language=='python' else
+                                   'function add(value) { return value + local_value; }\n', encoding='utf-8')
+                metadata = {'public': {'file': f'src/library.{extension}', 'line': 2 if language=='zhxb' else 1,
+                                      'sourceName': 'add', 'name':'add', 'public':True,
+                                      'locals':[{'name':'local_value','type':'整数型','defaultValue':'7'}]}}
+                atomic_write_json(project.ide_dir/'routines.json',metadata)
+                project.save_data({'variables':[{'id':'count','label':'数量','type':'整数型','default':'2','scope':'global'}]})
+                manager = self.manager()
+                built = manager.build(project,'directory')
+                def run(expected):
+                    report = self.temp / ('metadata-'+language+'.json')
+                    environment = os.environ.copy()
+                    environment.update(PCIDE_DATA_ROOT=str(self.temp/'execution-cache'), PYTHONPATH='')
+                    result = subprocess.run([built['artifact'],'--verify','--report',str(report)],cwd=self.temp,env=environment,
+                                            capture_output=True,text=True,encoding='utf-8',timeout=30)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    self.assertIn(str(expected),json.loads(report.read_text(encoding='utf-8'))['output'])
+                run(9)
+                self.assertTrue(manager.build(project,'directory')['cache_hit'])
+                metadata['public']['locals'][0]['defaultValue']='8'
+                atomic_write_json(project.ide_dir/'routines.json',metadata)
+                built = manager.build(project,'directory')
+                self.assertFalse(built['cache_hit'])
+                run(10)
+

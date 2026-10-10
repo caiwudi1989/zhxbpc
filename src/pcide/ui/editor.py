@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QSignalBlocker, QStringListModel, QTimer, QUrl, Qt, Signal, Slot
@@ -10,10 +11,10 @@ from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngineUrlScheme,
                                      QWebEngineUrlSchemeHandler, QWebEngineUrlRequestJob)
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QVBoxLayout, QWidget
 
 from pcide.core.paths import Paths
-from pcide.core.editor_projection import PYTHON_WORDS, JS_WORDS, transform
+from pcide.core.editor_projection import PYTHON_WORDS, transform
 
 
 def _env_flag(name: str) -> bool:
@@ -85,6 +86,7 @@ class Bridge(QObject):
     cursor = Signal(str, int)
     breakpoint = Signal(str, int)
     routine_metadata = Signal(str, str)
+    parameters_requested = Signal(str, int)
     error = Signal(str)
 
     @Slot()
@@ -107,9 +109,17 @@ class Bridge(QObject):
     def routineMetadata(self, uri, metadata):
         self.routine_metadata.emit(uri, metadata)
 
+    @Slot(str, int)
+    def editParameters(self,uri,line):
+        self.parameters_requested.emit(uri,line)
+
     @Slot(str)
     def reportError(self, message):
         self.error.emit(message)
+
+    @Slot()
+    def focusEditor(self):
+        self.parent().focus_editor()
 
 
 class LocalPage(QWebEnginePage):
@@ -148,13 +158,16 @@ class _FallbackPage:
             marker = "pcide.insertText("
             try:
                 payload = script.split(marker, 1)[1].rsplit(")", 1)[0]
+                self.editor._ensure_native_editable()
                 self.editor._fallback_edit.insertPlainText(json.loads(payload))
             except (IndexError, TypeError, ValueError):
                 pass
-        elif "pcide.goto(" in script:
+        elif "pcide.gotoRoutine(" in script or "pcide.goto(" in script:
             try:
-                line = int(script.split("pcide.goto(", 1)[1].split(")", 1)[0])
-                self.editor._fallback_goto(line)
+                routine_body = "pcide.gotoRoutine(" in script
+                marker = "pcide.gotoRoutine(" if routine_body else "pcide.goto("
+                line = int(script.split(marker, 1)[1].split(")", 1)[0])
+                self.editor._fallback_goto(line, routine_body)
             except (IndexError, ValueError):
                 pass
         elif "pcide.undo()" in script:
@@ -216,10 +229,12 @@ class _NativeHighlighter(QSyntaxHighlighter):
 
 class CodeEditor(QWidget):
     ready = Signal()
+    document_loaded = Signal(str)
     changed = Signal(str)
     cursor = Signal(str, int)
     breakpoint = Signal(str, int)
     routine_metadata = Signal(str, str)
+    parameters_requested = Signal(str, int)
     error = Signal(str)
 
     def __init__(self, paths: Paths, parent=None):
@@ -232,6 +247,7 @@ class CodeEditor(QWidget):
         self.completion_items: list[dict] = []
         self.routine_metadata_index: dict = {}
         self.startup_routines: list[str] = []
+        self.custom_types: list[str] = []
         self.chinese_view = True
         backend = os.environ.get("PCIDE_EDITOR_BACKEND", "auto").strip().lower()
         self._fallback = backend == "native" or (backend != "monaco" and _webengine_blocked())
@@ -241,10 +257,13 @@ class CodeEditor(QWidget):
         self.bridge.cursor.connect(self.cursor)
         self.bridge.breakpoint.connect(self.breakpoint)
         self.bridge.routine_metadata.connect(self.routine_metadata)
+        self.bridge.parameters_requested.connect(self.parameters_requested)
         self.bridge.error.connect(self.error)
         if self._fallback:
             self.profile = None
-            self.view = QPlainTextEdit(self)
+            from .native_edit import NativeEdit
+            self.view = NativeEdit(self)
+            self.setFocusProxy(self.view)
             self._fallback_edit = self.view
             self._fallback_edit.textChanged.connect(self._fallback_changed)
             self._fallback_edit.cursorPositionChanged.connect(self._fallback_cursor_changed)
@@ -259,6 +278,12 @@ class CodeEditor(QWidget):
             self.page = _FallbackPage(self)
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
+            from .routine_panel import RoutinePanel
+            self.routine_panel = RoutinePanel(self)
+            self._native_timer = QTimer(self)
+            self._native_timer.setSingleShot(True)
+            self._native_timer.timeout.connect(self._refresh_native)
+            layout.addWidget(self.routine_panel)
             layout.addWidget(self.view)
             self.loaded = True
             QTimer.singleShot(0, self.ready.emit)
@@ -270,6 +295,8 @@ class CodeEditor(QWidget):
         self.assets = EditorAssets(paths, self.profile)
         self.profile.installUrlSchemeHandler(b"pcide", self.assets)
         self.view = QWebEngineView(self)
+        self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusProxy(self.view)
         self.page = LocalPage(self.profile, self)
         self.view.setPage(self.page)
         channel = QWebChannel(self.page)
@@ -284,10 +311,59 @@ class CodeEditor(QWidget):
         if self.path and not getattr(self, "_fallback_loading", False):
             self.documents[self.path] = self._fallback_edit.toPlainText()
             self.changed.emit(self.path)
+            self._native_timer.start(300)
 
     def _fallback_cursor_changed(self):
         if self.path and not getattr(self, "_fallback_loading", False):
             self.cursor.emit(self.path, self._fallback_edit.textCursor().blockNumber() + 1)
+            from pcide.core.routines import find_metadata, scan
+            line = self._fallback_edit.textCursor().blockNumber() + 1
+            routine = next((routine for routine in scan(self.documents.get(self.path, ""), Path(self.path).suffix) if routine["line"] <= line <= routine["endLine"]), None)
+            labels = [item["label"] for item in self.completion_items]
+            if routine:
+                relative = next((value.get("file", "") for value in self.routine_metadata_index.values() if isinstance(value, dict) and self.path.replace("\\", "/").endswith("/" + value.get("file", ""))), "")
+                stored = find_metadata(self.routine_metadata_index, relative, routine["sourceName"], routine["line"])
+                labels += [item["name"] for item in stored.get("locals", [])] + routine["parameters"]
+            self._fallback_completion_model.setStringList(list(dict.fromkeys(labels)))
+
+    def _refresh_native(self):
+        if not self._fallback:
+            return
+        if self._fallback_edit.hasFocus() or not self.routine_panel.value:
+            self.routine_panel.refresh()
+        self._apply_native_visibility()
+
+    def _apply_native_visibility(self):
+        hidden = set()
+        collapsed = False
+        if self.chinese_view and self.path and self._language(self.path) in {'python','javascript','typescript','zhxb'}:
+            selected = self.routine_panel.value
+            from .routine_ranges import scan_editor as scan
+            routines = scan(self.documents.get(self.path,''),Path(self.path).suffix)
+            routine = next((item for item in routines if selected and item['sourceName'] == selected['sourceName']), None)
+            startup = routine and routine['sourceName'] in self.startup_routines
+            collapsed = bool(routine and self.routine_panel.collapse_key(selected['sourceName']) in self.routine_panel.collapsed)
+            for line, text in enumerate(self.documents.get(self.path, "").splitlines(), 1):
+                initialization = startup and not any(item['line'] <= line <= item['endLine'] for item in routines)
+                outside = routine and not (routine['line'] <= line <= routine['endLine'] or initialization)
+                declaration = bool(re.match(r"^[ \t]*(?:def |async def |function |import |from |\.子程序 |\.参数 |\.局部变量 |\.版本 |\.程序集 )", text))
+                declaration = declaration or bool(re.match(r"^[ \t]*if\s+__name__\s*==\s*['\"]__main__['\"]\s*:", text))
+                if Path(self.path).suffix in {'.js','.ts'} and 'function ' in text and re.search(r'\{\s*[^}\s]',text):
+                    declaration = False
+                if outside or collapsed or declaration:
+                    hidden.add(line)
+        self.view.hide_lines(hidden)
+        self.view.setReadOnly(False)
+
+    def _ensure_native_editable(self):
+        selected = self.routine_panel.value
+        if self.chinese_view and selected and self.routine_panel.collapse_key(selected['sourceName']) in self.routine_panel.collapsed:
+            self._fallback_goto(selected['line'], routine_body=True)
+
+    def focus_editor(self):
+        self.view.setFocus(Qt.FocusReason.OtherFocusReason)
+        if self.loaded and not self._fallback:
+            self.page.runJavaScript('pcide.focus()')
 
     def _insert_completion(self, text):
         self._fallback_edit.insertPlainText(str(text))
@@ -312,19 +388,36 @@ class CodeEditor(QWidget):
             # empty intermediate value.
             self.documents[self.path] = text
 
-    def _fallback_goto(self, line):
+    def _fallback_goto(self, line, routine_body=False):
         line = max(1, int(line))
+        column = 1
+        if self.routine_panel.routines:
+            index = next((index for index, routine in enumerate(self.routine_panel.routines) if routine['line'] <= line <= routine['endLine']), -1)
+            if index < 0 and self.chinese_view:
+                index = next((index for index, routine in enumerate(self.routine_panel.routines) if routine['sourceName'] in self.startup_routines), -1)
+            if index >= 0:
+                routine = self.routine_panel.routines[index]
+                if routine_body:
+                    line, column = routine['bodyLine'], routine['bodyColumn']
+                self.routine_panel.collapsed.discard(self.routine_panel.collapse_key(routine['sourceName']))
+                self.routine_panel.selector.setCurrentIndex(index)
+                self.routine_panel.select(index)
         cursor = self._fallback_edit.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
         for _ in range(line - 1):
             if not cursor.movePosition(cursor.MoveOperation.NextBlock):
                 break
+        cursor.movePosition(cursor.MoveOperation.Right, n=max(0, column-1))
         self._fallback_edit.setTextCursor(cursor)
+        self._fallback_edit.ensureCursorVisible()
+        self._fallback_edit.setFocus()
 
     def _fallback_snapshot(self):
         text = self._fallback_edit.toPlainText() if self.path else ""
         return {"path": self.path or "", "text": text,
-                "position": {"lineNumber": self._fallback_edit.textCursor().blockNumber() + 1}}
+                "position": {"lineNumber": self._fallback_edit.textCursor().blockNumber() + 1},
+                "selectedText": self._fallback_edit.textCursor().selectedText(),
+                "readOnly": self.view.isReadOnly(), "textFocus": self.view.hasFocus()}
 
     def _ready(self):
         self.loaded = True
@@ -338,19 +431,29 @@ class CodeEditor(QWidget):
         language = self._language(path)
         # The native editor displays source verbatim, so Chinese identifiers
         # must never be converted back into Python/JavaScript keywords.
-        self.documents[path] = transform(text, language, reverse=True) if self.chinese_view and not self._fallback else text
+        self.documents[path] = transform(text, language, reverse=True) if language == 'python' and self.chinese_view and not self._fallback else text
         self.changed.emit(path)
 
     def load(self, path: str | Path):
         new_path = str(Path(path).resolve())
         new_document = new_path not in self.documents
         if new_document:
+            if Path(new_path).stat().st_size > 5 * 1024 * 1024:
+                raise ValueError('编辑器单文件上限为5MiB')
             text = Path(new_path).read_text(encoding="utf-8")
             # Keep a local copy before touching the native document; some
             # Qt builds synchronously emit a stale ``textChanged`` callback
             # while switching models.
             if len(text) > 5 * 1024 * 1024:
                 raise ValueError("editor file exceeds 5 MiB")
+            incoming=len(text.encode('utf-8'))
+            while len(self.documents)>=64 or sum(len(value.encode('utf-8')) for value in self.documents.values())+incoming>16*1024*1024:
+                candidate=next((key for key,value in self.documents.items() if key!=self.path and value==self.saved.get(key)),None)
+                if candidate is None:
+                    raise ValueError('编辑器缓存已满；请先保存未保存文档（64文件/16MiB上限）')
+                self.documents.pop(candidate);self.saved.pop(candidate,None)
+                if not self._fallback and self.loaded:
+                    self.page.runJavaScript('pcide.closeDocument('+json.dumps(candidate)+')')
             self.documents[new_path] = text
             self.saved[new_path] = text
         self.path = new_path
@@ -364,8 +467,11 @@ class CodeEditor(QWidget):
                 self._fallback_set_text(source)
                 self.path = new_path
                 self.documents[new_path] = source
+                self.routine_panel.refresh()
+                self._refresh_native()
             else:
                 self._show_model(self.path)
+        self.document_loaded.emit(new_path)
 
     def _show_model(self, path):
         if self._fallback:
@@ -374,15 +480,40 @@ class CodeEditor(QWidget):
             return
         language = self._language(path)
         args = json.dumps({"path": path, "language": language, "text": self.documents[path],
-                           "completions": self.completion_items, "chinese": self.chinese_view,
-                           "words": PYTHON_WORDS if language == "python" else JS_WORDS,
-                           "routines": self.routine_metadata_index,
+                           "completions": self.completion_items, "chinese": self.chinese_view and language in {"python","javascript","typescript","zhxb"},
+                           "words": PYTHON_WORDS if language == "python" else {},
+                           "routines": self.display_routine_metadata(path),
+                           "customTypes": self.custom_types,
                            "startupRoutines": self.startup_routines}, ensure_ascii=False)
         self.page.runJavaScript(f"pcide.open({args})")
 
+    def display_routine_metadata(self,path):
+        from pcide.core.routines import scan,find_metadata
+        from pcide.core.routine_signatures import parameter_details
+        source=self.documents.get(path,'')
+        result=dict(self.routine_metadata_index)
+        try:
+            for routine in scan(source,Path(path).suffix):
+                value=next((v for v in result.values() if v.get('sourceName')==routine['sourceName'] and path.replace('\\','/').endswith('/'+v.get('file',''))),{})
+                value={**value,'file':value.get('file') or path.replace('\\','/'),'sourceName':routine['sourceName'],'line':routine['line'],'parameterInfo':parameter_details(source,Path(path).suffix,routine['sourceName'])}
+                for parameter in value['parameterInfo']:
+                    parameter['remark']=value.get('parameterNotes',{}).get(parameter['name'],parameter.get('remark',''))
+                if Path(path).suffix=='.zhxb':
+                    from pcide.core.compiler import parse
+                    value['declaredLocals']=next(p.locals for p in parse(source).procedures if p.name==routine['sourceName'])
+                for key,old in list(result.items()):
+                    if old.get('sourceName')==routine['sourceName'] and (key.startswith(path+':') or path.replace('\\','/').endswith('/'+old.get('file',''))):
+                        result.pop(key)
+                result[path+':'+str(routine['line'])]=value
+        except (ValueError,SyntaxError,StopIteration):
+            pass
+        return result
+
     @staticmethod
     def _language(path):
-        return {".py": "python", ".ts": "typescript", ".js": "javascript", ".json": "json", ".cs": "csharp", ".c": "cpp", ".zhxb": "zhxb"}.get(Path(path).suffix.lower(), "plaintext")
+        return {".py":"python", ".ts":"typescript", ".js":"javascript", ".json":"json", ".cs":"csharp",
+                ".c":"cpp", ".cpp":"cpp", ".cc":"cpp", ".h":"cpp", ".hpp":"cpp", ".html":"html",
+                ".css":"css", ".csproj":"xml", ".xml":"xml", ".md":"markdown", ".gd":"gdscript", ".zhxb":"zhxb"}.get(Path(path).suffix.lower(), "plaintext")
 
     def set_completion_items(self, items):
         """Update project symbols used by Monaco's Yi-style completion popup."""
@@ -411,17 +542,27 @@ class CodeEditor(QWidget):
 
     def set_routine_metadata(self, metadata):
         self.routine_metadata_index = metadata if isinstance(metadata, dict) else {}
+        if self._fallback:
+            self.routine_panel.refresh()
+            self._refresh_native()
+            return
         if self.loaded and self.path:
             self._show_model(self.path)
 
     def set_startup_routines(self, names):
         """Set the single project-defined startup handler shown as _启动程序."""
         self.startup_routines = list(dict.fromkeys(str(name) for name in (names or []) if str(name).strip()))
+        if self._fallback:
+            self.routine_panel.refresh()
+            return
         if self.loaded and self.path:
             self._show_model(self.path)
 
     def set_chinese_view(self, enabled):
         self.chinese_view = bool(enabled)
+        if self._fallback:
+            self._refresh_native()
+            return
         if self.loaded and self.path:
             self._show_model(self.path)
 
@@ -452,6 +593,10 @@ class CodeEditor(QWidget):
         if self.loaded:
             self.page.runJavaScript(f"pcide.goto({int(line)})")
 
+    def goto_routine(self, line: int):
+        if self.loaded:
+            self.page.runJavaScript(f"pcide.gotoRoutine({int(line)})")
+
     def undo(self):
         if self._fallback:
             self._fallback_edit.undo()
@@ -475,8 +620,10 @@ class CodeEditor(QWidget):
         if not self.loaded:
             return
         if self._fallback:
-            self._fallback_edit.setFocus()
-            self._fallback_edit.find("")
+            if not hasattr(self, 'find_dialog'):
+                from .native_edit import FindDialog
+                self.find_dialog = FindDialog(self)
+            self.find_dialog.open_find(replace)
             return
         self.page.runJavaScript(f"pcide.find({str(bool(replace)).lower()})")
 
@@ -516,12 +663,12 @@ class CodeEditor(QWidget):
                 self._fallback_breakpoints = set(int(line) for line in lines)
                 selections = []
                 for line in sorted(self._fallback_breakpoints):
-                    block = self._fallback_edit.document().findBlockByLineNumber(line - 1)
+                    block = self._fallback_edit.document().findBlockByNumber(line - 1)
                     if block.isValid():
                         selections.append((block, QColor("#ffe1e1")))
                 extra = []
                 for block, color in selections:
-                    selection = QPlainTextEdit.ExtraSelection()
+                    selection = QTextEdit.ExtraSelection()
                     selection.format.setBackground(color)
                     selection.format.setProperty(QTextCharFormat.FullWidthSelection, True)
                     selection.cursor = self._fallback_edit.textCursor()
@@ -545,10 +692,62 @@ class CodeEditor(QWidget):
         if self.loaded:
             self.page.runJavaScript(f"pcide.insertText({json.dumps(str(text), ensure_ascii=False)})")
 
+    def request_parameters(self):
+        if self._fallback:
+            if self.routine_panel.value:
+                self.parameters_requested.emit(self.path,self.routine_panel.value['line'])
+        else:
+            self.page.runJavaScript('pcide.editCurrentParameters()')
+
+    def fold_all(self,collapsed):
+        if self._fallback:
+            panel=self.routine_panel
+            for routine in panel.routines:
+                key=panel.collapse_key(routine['sourceName'])
+                if collapsed: panel.collapsed.add(key)
+                else: panel.collapsed.discard(key)
+            panel.select(panel.selector.currentIndex())
+        else:
+            self.page.runJavaScript('pcide.foldAll('+('true' if collapsed else 'false')+')')
+
+    def add_local(self):
+        if self._fallback:
+            self.routine_panel.add_local()
+        else:
+            self.page.runJavaScript('pcide.addLocal()')
+
+    def toggle_comment(self):
+        if not self._fallback:
+            self.page.runJavaScript('pcide.toggleComment()')
+            return
+        from PySide6.QtGui import QTextCursor
+        cursor=self._fallback_edit.textCursor()
+        start=self._fallback_edit.document().findBlock(cursor.selectionStart()).blockNumber()
+        end=self._fallback_edit.document().findBlock(max(cursor.selectionStart(),cursor.selectionEnd()-1)).blockNumber()
+        prefix='//' if Path(self.path or '').suffix in {'.js','.ts','.zhxb'} else '#'
+        lines=self._fallback_edit.toPlainText().split('\n')
+        uncomment=all(not lines[row].strip() or lines[row].lstrip().startswith(prefix) for row in range(start,end+1))
+        cursor.beginEditBlock()
+        for row in range(end,start-1,-1):
+            if not lines[row].strip(): continue
+            indent=len(lines[row])-len(lines[row].lstrip())
+            block=self._fallback_edit.document().findBlockByNumber(row)
+            cursor.setPosition(block.position()+indent)
+            if uncomment:
+                count=len(prefix)+(1 if lines[row][indent+len(prefix):].startswith(' ') else 0)
+                cursor.setPosition(cursor.position()+count,QTextCursor.MoveMode.KeepAnchor)
+                cursor.removeSelectedText()
+            else:
+                cursor.insertText(prefix+' ')
+        cursor.endEditBlock()
+
     def close_project(self):
         self.path = None
+        self.document_loaded.emit('')
         self.documents.clear()
         self.saved.clear()
+        if self._fallback:
+            self.routine_panel.refresh()
         if self.loaded:
             if self._fallback:
                 self._fallback_set_text("")

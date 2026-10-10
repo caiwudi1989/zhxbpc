@@ -1,0 +1,1005 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "id": "text_unicode",
+      "title": "Unicode 文本",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_unicode",
+      "description": "Unicode 文本：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "5 PC软件🙂",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "text_regex",
+      "title": "正则提取",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_regex",
+      "description": "正则提取：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "['12', '34']",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "text_template",
+      "title": "文本模板",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_template",
+      "description": "文本模板：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "欢迎 开发者",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "text_counter",
+      "title": "词频统计",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_counter",
+      "description": "词频统计：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[('red', 2), ('blue', 1)]",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "text_normalize",
+      "title": "Unicode 规范化",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_normalize",
+      "description": "Unicode 规范化：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "ABC123",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "text_diff",
+      "title": "源码差异",
+      "category": "文本",
+      "template": "python-script",
+      "path": "projects/text_diff",
+      "description": "源码差异：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "显示old/new行差异",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_json",
+      "title": "JSON 保存与读取",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_json",
+      "description": "JSON 保存与读取：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "{'名字': '软件', '版本': 1}",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_csv",
+      "title": "CSV 报表",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_csv",
+      "description": "CSV 报表：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[{'name': 'Alice', 'score': '95'}]",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_ini",
+      "title": "INI 设置",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_ini",
+      "description": "INI 设置：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "640",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_xml",
+      "title": "XML 解析",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_xml",
+      "description": "XML 解析：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "PCIDE",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_dataclass",
+      "title": "数据类",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_dataclass",
+      "description": "数据类：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "{'name': 'book', 'price': 20}",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "data_validate",
+      "title": "输入校验",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/data_validate",
+      "description": "输入校验：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "42及范围错误",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_atomic",
+      "title": "原子文件替换",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_atomic",
+      "description": "原子文件替换：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "version=2，无残留.tmp",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_paths",
+      "title": "相对路径校验",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_paths",
+      "description": "相对路径校验：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "data.txt及路径越界",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_hash",
+      "title": "文件 SHA256",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_hash",
+      "description": "文件 SHA256：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "ba7816bf…15ad",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_zip",
+      "title": "ZIP 资源归档",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_zip",
+      "description": "ZIP 资源归档：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "hello；自动关闭ZIP",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_temp",
+      "title": "临时目录自动回收",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_temp",
+      "description": "临时目录自动回收：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "temporary / reclaimed True",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "file_walk",
+      "title": "有界目录扫描",
+      "category": "文件",
+      "template": "python-script",
+      "path": "projects/file_walk",
+      "description": "有界目录扫描：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "['main.py']",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "db_crud",
+      "title": "SQLite 增删改查",
+      "category": "数据库",
+      "template": "python-script",
+      "path": "projects/db_crud",
+      "description": "SQLite 增删改查：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[(1, 'new')] / 0",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "db_transaction",
+      "title": "事务回滚",
+      "category": "数据库",
+      "template": "python-script",
+      "path": "projects/db_transaction",
+      "description": "事务回滚：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "0",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "db_parameter",
+      "title": "SQL 参数绑定",
+      "category": "数据库",
+      "template": "python-script",
+      "path": "projects/db_parameter",
+      "description": "SQL 参数绑定：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "a'b",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "db_migration",
+      "title": "数据库版本迁移",
+      "category": "数据库",
+      "template": "python-script",
+      "path": "projects/db_migration",
+      "description": "数据库版本迁移：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "1",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_sort",
+      "title": "稳定排序",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_sort",
+      "description": "稳定排序：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "Bob优先，Amy和Cal顺序保持",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_bisect",
+      "title": "二分查找",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_bisect",
+      "description": "二分查找：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "2 2",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_heap",
+      "title": "优先队列",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_heap",
+      "description": "优先队列：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "high / normal / low",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_bfs",
+      "title": "广度优先搜索",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_bfs",
+      "description": "广度优先搜索：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "['A', 'B', 'C', 'D']",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_cache",
+      "title": "有界 LRU 缓存",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_cache",
+      "description": "有界 LRU 缓存：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "16 16 1",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "algo_generator",
+      "title": "流式生成器",
+      "category": "算法",
+      "template": "python-script",
+      "path": "projects/algo_generator",
+      "description": "流式生成器：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[[0, 1, 2], [3, 4, 5], [6]]",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "math_decimal",
+      "title": "金额精度",
+      "category": "数学",
+      "template": "python-script",
+      "path": "projects/math_decimal",
+      "description": "金额精度：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "0.30",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "math_statistics",
+      "title": "统计摘要",
+      "category": "数学",
+      "template": "python-script",
+      "path": "projects/math_statistics",
+      "description": "统计摘要：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "5 5.0 2.236",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "math_vector",
+      "title": "二维向量",
+      "category": "游戏基础",
+      "template": "python-script",
+      "path": "projects/math_vector",
+      "description": "二维向量：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "5.0 (0.6, 0.8)",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "math_collision",
+      "title": "矩形碰撞",
+      "category": "游戏基础",
+      "template": "python-script",
+      "path": "projects/math_collision",
+      "description": "矩形碰撞：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "True False",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_factory",
+      "title": "工厂注册与复用",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_factory",
+      "description": "工厂注册与复用：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "{'type': 'Label', 'text': 'ready'}",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_strategy",
+      "title": "策略切换",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_strategy",
+      "description": "策略切换：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "HELLO hello",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_state",
+      "title": "状态机",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_state",
+      "description": "状态机：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "running / idle",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_command",
+      "title": "命令与撤销",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_command",
+      "description": "命令与撤销：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[42] / []",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_observer",
+      "title": "订阅与解除",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_observer",
+      "description": "订阅与解除：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "只输出once",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "design_repository",
+      "title": "存储接口",
+      "category": "工程模式",
+      "template": "python-script",
+      "path": "projects/design_repository",
+      "description": "存储接口：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "PCIDE",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_pool",
+      "title": "有界后台任务池",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_pool",
+      "description": "有界后台任务池：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[0, 1, 4, 9]；退出回收线程",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_cancel",
+      "title": "协作取消任务",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_cancel",
+      "description": "协作取消任务：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "cancelled",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_error",
+      "title": "任务异常传递",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_error",
+      "description": "任务异常传递：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "task failed",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_lock",
+      "title": "共享计数与互斥",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_lock",
+      "description": "共享计数与互斥：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[0, 1, 2, 3]",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_queue",
+      "title": "生产消费队列",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_queue",
+      "description": "生产消费队列：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "[0, 1, 2]",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_capacity",
+      "title": "任务容量限制",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_capacity",
+      "description": "任务容量限制：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "报告任务容量已满，退出回收",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_event",
+      "title": "线程事件同步",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_event",
+      "description": "线程事件同步：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "True 42",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "task_deadline",
+      "title": "等待超时与取消",
+      "category": "线程",
+      "template": "python-script",
+      "path": "projects/task_deadline",
+      "description": "等待超时与取消：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "timeout / stopped",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "resource_context",
+      "title": "自定义资源上下文",
+      "category": "资源管理",
+      "template": "python-script",
+      "path": "projects/resource_context",
+      "description": "自定义资源上下文：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "open / data / close",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "resource_exitstack",
+      "title": "多资源自动关闭",
+      "category": "资源管理",
+      "template": "python-script",
+      "path": "projects/resource_exitstack",
+      "description": "多资源自动关闭：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "['a', 'b'] / True",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "resource_weakref",
+      "title": "弱引用缓存",
+      "category": "资源管理",
+      "template": "python-script",
+      "path": "projects/resource_weakref",
+      "description": "弱引用缓存：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "1 / 0",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "resource_memory",
+      "title": "临时内存测量",
+      "category": "资源管理",
+      "template": "python-script",
+      "path": "projects/resource_memory",
+      "description": "临时内存测量：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "allocated True / released True（逻辑分配统计）",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "time_datetime",
+      "title": "日期与时区",
+      "category": "时间",
+      "template": "python-script",
+      "path": "projects/time_datetime",
+      "description": "日期与时区：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "2026-01-01T08:00:00+08:00",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "time_monotonic",
+      "title": "耗时测量",
+      "category": "时间",
+      "template": "python-script",
+      "path": "projects/time_monotonic",
+      "description": "耗时测量：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "49995000 elapsed_nonnegative True",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "network_url",
+      "title": "URL 参数编码",
+      "category": "网络",
+      "template": "python-script",
+      "path": "projects/network_url",
+      "description": "URL 参数编码：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "{'q': ['PC 软件']}，无网络请求",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "network_http",
+      "title": "离线 HTTP 请求解析",
+      "category": "网络",
+      "template": "python-script",
+      "path": "projects/network_http",
+      "description": "离线 HTTP 请求解析：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "GET /health HTTP/1.1 localhost",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "pc_environment",
+      "title": "系统环境信息",
+      "category": "PC功能",
+      "template": "python-script",
+      "path": "projects/pc_environment",
+      "description": "系统环境信息：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "显示实际系统与CPU数量",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "pc_windows",
+      "title": "枚举 Windows 窗口",
+      "category": "PC功能",
+      "template": "python-script",
+      "path": "projects/pc_windows",
+      "description": "枚举 Windows 窗口：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "列出本机窗口；需要Windows",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "binary_struct",
+      "title": "二进制结构",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/binary_struct",
+      "description": "二进制结构：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "6 (123, 7)",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "binary_base64",
+      "title": "Base64 编解码",
+      "category": "数据",
+      "template": "python-script",
+      "path": "projects/binary_base64",
+      "description": "Base64 编解码：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "中文",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "test_assert",
+      "title": "断言与回归",
+      "category": "迭代",
+      "template": "python-script",
+      "path": "projects/test_assert",
+      "description": "断言与回归：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "3 regression cases passed",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "test_unittest",
+      "title": "软件单元测试",
+      "category": "迭代",
+      "template": "python-script",
+      "path": "projects/test_unittest",
+      "description": "软件单元测试：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "1项unittest成功",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_counter",
+      "title": "按钮计数",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_counter",
+      "description": "按钮计数：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_input",
+      "title": "文本输入",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_input",
+      "description": "文本输入：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_check",
+      "title": "勾选设置",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_check",
+      "description": "勾选设置：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_combo",
+      "title": "下拉选择",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_combo",
+      "description": "下拉选择：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_slider",
+      "title": "滑块数值",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_slider",
+      "description": "滑块数值：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_progress",
+      "title": "后台进度",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_progress",
+      "description": "后台进度：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_list",
+      "title": "列表显示",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_list",
+      "description": "列表显示：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ui_tabs",
+      "title": "标签布局",
+      "category": "窗口交互",
+      "template": "python-form",
+      "path": "projects/ui_tabs",
+      "description": "标签布局：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "窗口加载后显示标题；点击执行更新计数，后台进度例还更新进度条。",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "zh_console",
+      "title": "中文源码输出",
+      "category": "多语言",
+      "template": "zhxb-script",
+      "path": "projects/zh_console",
+      "description": "中文源码输出：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "输出结果或点击窗口按钮触发事件",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "js_json",
+      "title": "JavaScript 数据处理",
+      "category": "多语言",
+      "template": "javascript-script",
+      "path": "projects/js_json",
+      "description": "JavaScript 数据处理：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "输出结果或点击窗口按钮触发事件",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "ts_typed",
+      "title": "TypeScript 类型示例",
+      "category": "多语言",
+      "template": "typescript-script",
+      "path": "projects/ts_typed",
+      "description": "TypeScript 类型示例：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "输出结果或点击窗口按钮触发事件",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "js_window",
+      "title": "JavaScript 窗口事件",
+      "category": "多语言",
+      "template": "javascript-form",
+      "path": "projects/js_window",
+      "description": "JavaScript 窗口事件：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "输出结果或点击窗口按钮触发事件",
+      "requires": "IDE 已有脚本运行时；无需下载"
+    },
+    {
+      "id": "native_c",
+      "title": "C 小型工具",
+      "category": "原生软件",
+      "template": "c-console",
+      "path": "projects/native_c",
+      "description": "C 小型工具：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C 编译器；不下载"
+    },
+    {
+      "id": "native_sort",
+      "title": "C++ 排序",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_sort",
+      "description": "C++ 排序：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_thread",
+      "title": "C++ 线程回收",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_thread",
+      "description": "C++ 线程回收：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_future",
+      "title": "C++ 异步结果",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_future",
+      "description": "C++ 异步结果：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_raii",
+      "title": "C++ 智能指针",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_raii",
+      "description": "C++ 智能指针：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_factory",
+      "title": "C++ 工厂",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_factory",
+      "description": "C++ 工厂：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_win32",
+      "title": "Win32 原生提示框",
+      "category": "原生软件",
+      "template": "cpp-win32",
+      "path": "projects/native_win32",
+      "description": "Win32 原生提示框：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_file",
+      "title": "C++ 文件 RAII",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_file",
+      "description": "C++ 文件 RAII：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_mutex",
+      "title": "C++ 互斥共享数据",
+      "category": "原生软件",
+      "template": "cpp-console",
+      "path": "projects/native_mutex",
+      "description": "C++ 互斥共享数据：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "native_cmake",
+      "title": "CMake 增量工程",
+      "category": "原生软件",
+      "template": "cpp-cmake",
+      "path": "projects/native_cmake",
+      "description": "CMake 增量工程：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 C++ 编译器（CMake示例还需CMake）；不下载"
+    },
+    {
+      "id": "cs_console",
+      "title": "C# 系统运行时",
+      "category": "C# 软件",
+      "template": "csharp-console",
+      "path": "projects/cs_console",
+      "description": "C# 系统运行时：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "cs_factory",
+      "title": "C# 工厂复用",
+      "category": "C# 软件",
+      "template": "csharp-console",
+      "path": "projects/cs_factory",
+      "description": "C# 工厂复用：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "cs_async",
+      "title": "C# 异步任务",
+      "category": "C# 软件",
+      "template": "csharp-console",
+      "path": "projects/cs_async",
+      "description": "C# 异步任务：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "cs_cancel",
+      "title": "C# 协作取消",
+      "category": "C# 软件",
+      "template": "csharp-console",
+      "path": "projects/cs_cancel",
+      "description": "C# 协作取消：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "cs_json",
+      "title": "C# JSON 数据",
+      "category": "C# 软件",
+      "template": "csharp-console",
+      "path": "projects/cs_json",
+      "description": "C# JSON 数据：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "cs_window",
+      "title": "C# Windows Forms 窗口",
+      "category": "C# 软件",
+      "template": "csharp-winforms",
+      "path": "projects/cs_window",
+      "description": "C# Windows Forms 窗口：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "编译生成真实app.exe，F5运行；源码展示该示例的行为",
+      "requires": "已安装 .NET 8+ SDK / 对应运行时；不下载"
+    },
+    {
+      "id": "web_1",
+      "title": "网页计数器",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_1",
+      "description": "网页计数器：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "web_2",
+      "title": "网页计算器",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_2",
+      "description": "网页计算器：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "web_3",
+      "title": "任务列表",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_3",
+      "description": "任务列表：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "web_4",
+      "title": "本地笔记",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_4",
+      "description": "本地笔记：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "web_5",
+      "title": "Canvas 动画",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_5",
+      "description": "Canvas 动画：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "web_6",
+      "title": "Canvas 鼠标交互",
+      "category": "网页与小游戏",
+      "template": "web-app",
+      "path": "projects/web_6",
+      "description": "Canvas 鼠标交互：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5打开浏览器，操作按钮或Canvas查看实际交互",
+      "requires": "系统浏览器"
+    },
+    {
+      "id": "unity_rotate",
+      "title": "Unity 2D 旋转",
+      "category": "Unity 游戏",
+      "template": "unity-2d",
+      "path": "projects/unity_rotate",
+      "description": "Unity 2D 旋转：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "打开Unity后使用PCIDE/Create Demo Scene，再按Play；IDE构建生成game.exe",
+      "requires": "Unity Editor 与 Windows Build Support"
+    },
+    {
+      "id": "unity_cube",
+      "title": "Unity 3D 方块",
+      "category": "Unity 游戏",
+      "template": "unity-3d",
+      "path": "projects/unity_cube",
+      "description": "Unity 3D 方块：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "打开Unity后使用PCIDE/Create Demo Scene，再按Play；IDE构建生成game.exe",
+      "requires": "Unity Editor 与 Windows Build Support"
+    },
+    {
+      "id": "unity_move",
+      "title": "Unity 3D 移动",
+      "category": "Unity 游戏",
+      "template": "unity-3d",
+      "path": "projects/unity_move",
+      "description": "Unity 3D 移动：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "打开Unity后使用PCIDE/Create Demo Scene，再按Play；IDE构建生成game.exe",
+      "requires": "Unity Editor 与 Windows Build Support"
+    },
+    {
+      "id": "godot_ball",
+      "title": "Godot 移动圆球",
+      "category": "Godot 游戏",
+      "template": "godot-2d",
+      "path": "projects/godot_ball",
+      "description": "Godot 移动圆球：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5运行实际场景；构建导出game.exe",
+      "requires": "Godot 4 与 Windows 导出模板；不下载"
+    },
+    {
+      "id": "godot_cube",
+      "title": "Godot 3D 方块",
+      "category": "Godot 游戏",
+      "template": "godot-3d",
+      "path": "projects/godot_cube",
+      "description": "Godot 3D 方块：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5运行实际场景；构建导出game.exe",
+      "requires": "Godot 4 与 Windows 导出模板；不下载"
+    },
+    {
+      "id": "godot_input",
+      "title": "Godot 键盘移动",
+      "category": "Godot 游戏",
+      "template": "godot-2d",
+      "path": "projects/godot_input",
+      "description": "Godot 键盘移动：完整工程、入口源码与使用说明；可修改后再次运行/编译进行迭代。",
+      "expected": "F5运行实际场景；构建导出game.exe",
+      "requires": "Godot 4 与 Windows 导出模板；不下载"
+    }
+  ]
+}

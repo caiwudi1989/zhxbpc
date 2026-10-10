@@ -1,0 +1,8 @@
+[application]
+config/name="PCIDE Game"
+run/main_scene="res://game/main.tscn"
+[display]
+window/size/viewport_width=760
+window/size/viewport_height=440
+[rendering]
+renderer/rendering_method="gl_compatibility"

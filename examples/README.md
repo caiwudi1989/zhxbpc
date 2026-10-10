@@ -1,0 +1,104 @@
+# 完整示例目录
+
+共100个不同工程。在IDE的欢迎页或帮助 → 示例中心按类别/关键词筛选，双击创建副本。
+
+- [Unicode 文本](projects/text_unicode/README.md)：文本
+- [正则提取](projects/text_regex/README.md)：文本
+- [文本模板](projects/text_template/README.md)：文本
+- [词频统计](projects/text_counter/README.md)：文本
+- [Unicode 规范化](projects/text_normalize/README.md)：文本
+- [源码差异](projects/text_diff/README.md)：文本
+- [JSON 保存与读取](projects/data_json/README.md)：数据
+- [CSV 报表](projects/data_csv/README.md)：数据
+- [INI 设置](projects/data_ini/README.md)：数据
+- [XML 解析](projects/data_xml/README.md)：数据
+- [数据类](projects/data_dataclass/README.md)：数据
+- [输入校验](projects/data_validate/README.md)：数据
+- [原子文件替换](projects/file_atomic/README.md)：文件
+- [相对路径校验](projects/file_paths/README.md)：文件
+- [文件 SHA256](projects/file_hash/README.md)：文件
+- [ZIP 资源归档](projects/file_zip/README.md)：文件
+- [临时目录自动回收](projects/file_temp/README.md)：文件
+- [有界目录扫描](projects/file_walk/README.md)：文件
+- [SQLite 增删改查](projects/db_crud/README.md)：数据库
+- [事务回滚](projects/db_transaction/README.md)：数据库
+- [SQL 参数绑定](projects/db_parameter/README.md)：数据库
+- [数据库版本迁移](projects/db_migration/README.md)：数据库
+- [稳定排序](projects/algo_sort/README.md)：算法
+- [二分查找](projects/algo_bisect/README.md)：算法
+- [优先队列](projects/algo_heap/README.md)：算法
+- [广度优先搜索](projects/algo_bfs/README.md)：算法
+- [有界 LRU 缓存](projects/algo_cache/README.md)：算法
+- [流式生成器](projects/algo_generator/README.md)：算法
+- [金额精度](projects/math_decimal/README.md)：数学
+- [统计摘要](projects/math_statistics/README.md)：数学
+- [二维向量](projects/math_vector/README.md)：游戏基础
+- [矩形碰撞](projects/math_collision/README.md)：游戏基础
+- [工厂注册与复用](projects/design_factory/README.md)：工程模式
+- [策略切换](projects/design_strategy/README.md)：工程模式
+- [状态机](projects/design_state/README.md)：工程模式
+- [命令与撤销](projects/design_command/README.md)：工程模式
+- [订阅与解除](projects/design_observer/README.md)：工程模式
+- [存储接口](projects/design_repository/README.md)：工程模式
+- [有界后台任务池](projects/task_pool/README.md)：线程
+- [协作取消任务](projects/task_cancel/README.md)：线程
+- [任务异常传递](projects/task_error/README.md)：线程
+- [共享计数与互斥](projects/task_lock/README.md)：线程
+- [生产消费队列](projects/task_queue/README.md)：线程
+- [任务容量限制](projects/task_capacity/README.md)：线程
+- [线程事件同步](projects/task_event/README.md)：线程
+- [等待超时与取消](projects/task_deadline/README.md)：线程
+- [自定义资源上下文](projects/resource_context/README.md)：资源管理
+- [多资源自动关闭](projects/resource_exitstack/README.md)：资源管理
+- [弱引用缓存](projects/resource_weakref/README.md)：资源管理
+- [临时内存测量](projects/resource_memory/README.md)：资源管理
+- [日期与时区](projects/time_datetime/README.md)：时间
+- [耗时测量](projects/time_monotonic/README.md)：时间
+- [URL 参数编码](projects/network_url/README.md)：网络
+- [离线 HTTP 请求解析](projects/network_http/README.md)：网络
+- [系统环境信息](projects/pc_environment/README.md)：PC功能
+- [枚举 Windows 窗口](projects/pc_windows/README.md)：PC功能
+- [二进制结构](projects/binary_struct/README.md)：数据
+- [Base64 编解码](projects/binary_base64/README.md)：数据
+- [断言与回归](projects/test_assert/README.md)：迭代
+- [软件单元测试](projects/test_unittest/README.md)：迭代
+- [按钮计数](projects/ui_counter/README.md)：窗口交互
+- [文本输入](projects/ui_input/README.md)：窗口交互
+- [勾选设置](projects/ui_check/README.md)：窗口交互
+- [下拉选择](projects/ui_combo/README.md)：窗口交互
+- [滑块数值](projects/ui_slider/README.md)：窗口交互
+- [后台进度](projects/ui_progress/README.md)：窗口交互
+- [列表显示](projects/ui_list/README.md)：窗口交互
+- [标签布局](projects/ui_tabs/README.md)：窗口交互
+- [中文源码输出](projects/zh_console/README.md)：多语言
+- [JavaScript 数据处理](projects/js_json/README.md)：多语言
+- [TypeScript 类型示例](projects/ts_typed/README.md)：多语言
+- [JavaScript 窗口事件](projects/js_window/README.md)：多语言
+- [C 小型工具](projects/native_c/README.md)：原生软件
+- [C++ 排序](projects/native_sort/README.md)：原生软件
+- [C++ 线程回收](projects/native_thread/README.md)：原生软件
+- [C++ 异步结果](projects/native_future/README.md)：原生软件
+- [C++ 智能指针](projects/native_raii/README.md)：原生软件
+- [C++ 工厂](projects/native_factory/README.md)：原生软件
+- [Win32 原生提示框](projects/native_win32/README.md)：原生软件
+- [C++ 文件 RAII](projects/native_file/README.md)：原生软件
+- [C++ 互斥共享数据](projects/native_mutex/README.md)：原生软件
+- [CMake 增量工程](projects/native_cmake/README.md)：原生软件
+- [C# 系统运行时](projects/cs_console/README.md)：C# 软件
+- [C# 工厂复用](projects/cs_factory/README.md)：C# 软件
+- [C# 异步任务](projects/cs_async/README.md)：C# 软件
+- [C# 协作取消](projects/cs_cancel/README.md)：C# 软件
+- [C# JSON 数据](projects/cs_json/README.md)：C# 软件
+- [C# Windows Forms 窗口](projects/cs_window/README.md)：C# 软件
+- [网页计数器](projects/web_1/README.md)：网页与小游戏
+- [网页计算器](projects/web_2/README.md)：网页与小游戏
+- [任务列表](projects/web_3/README.md)：网页与小游戏
+- [本地笔记](projects/web_4/README.md)：网页与小游戏
+- [Canvas 动画](projects/web_5/README.md)：网页与小游戏
+- [Canvas 鼠标交互](projects/web_6/README.md)：网页与小游戏
+- [Unity 2D 旋转](projects/unity_rotate/README.md)：Unity 游戏
+- [Unity 3D 方块](projects/unity_cube/README.md)：Unity 游戏
+- [Unity 3D 移动](projects/unity_move/README.md)：Unity 游戏
+- [Godot 移动圆球](projects/godot_ball/README.md)：Godot 游戏
+- [Godot 3D 方块](projects/godot_cube/README.md)：Godot 游戏
+- [Godot 键盘移动](projects/godot_input/README.md)：Godot 游戏

@@ -14,18 +14,52 @@ const api={
 const filename=path.join(project,manifest.entry);
 const scriptUrl=require('node:url').pathToFileURL(filename).href;
 let source=fs.readFileSync(filename,'utf8');
-if(manifest.language==='typescript'){
- const sdk=process.env.PCIDE_TYPESCRIPT||path.join(process.env.PCIDE_ROOT,'sdk/typescript/package/lib/typescript.js');
- const ts=require(sdk);
+const sdk=process.env.PCIDE_TYPESCRIPT||path.join(process.env.PCIDE_ROOT,'sdk/typescript/package/lib/typescript.js');
+const published=process.env.PCIDE_PREPARED_NODE==='1';
+const ts=published?null:require(sdk), sourceContract=published?null:require('./source_contract.cjs');
+const preparedProject=published?JSON.parse(fs.readFileSync(path.join(project,'.pcide/prepared-node.json'),'utf8')):null;
+if(published&&(preparedProject.version!==1||!preparedProject.exports||!preparedProject.metadata||typeof preparedProject.dataSource!=='string'))throw Error('invalid published Node contract');
+if(!published&&manifest.language==='typescript'){
  const result=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},fileName:filename,reportDiagnostics:true});
  const errors=(result.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error);
  if(errors.length)throw Error(ts.flattenDiagnosticMessageText(errors[0].messageText,'\n'));
  source=result.outputText;
 }
+source=published?source:sourceContract.prepare(ts,fs.readFileSync(filename,'utf8'),filename,project,manifest.language).source;
 const context=vm.createContext({console:{log:(...args)=>send('stdout',{text:args.map(a=>typeof a==='string'?a:JSON.stringify(a)).join(' ')+'\n'}),
  error:(...args)=>send('stderr',{text:args.map(String).join(' ')+'\n'})},
  require:name=>name==='pcide'?api:require(require.resolve(name,{paths:[path.dirname(filename)]})),
  module:{exports:{}},exports:{},__filename:filename,__dirname:path.dirname(filename),setTimeout,clearTimeout,Buffer,process});
+const modules=new Map(), timeout=Math.max(1,Math.round((manifest.execution?.timeout_seconds||60)*1000));
+const projectRequire=(name,parent=filename)=>{
+ if(name==='pcide')return api;
+ const candidate=path.resolve(path.dirname(parent),name);
+ if(name.startsWith('.')&&candidate.startsWith(path.join(project,'src')+path.sep)) {
+  const target=[candidate,candidate+'.js',candidate+'.ts',path.join(candidate,'index.js'),path.join(candidate,'index.ts')].find(file=>fs.existsSync(file)&&fs.statSync(file).isFile());
+  if(target) {
+   if(modules.has(target))return modules.get(target).exports;
+   const relative=path.relative(project,target).replaceAll('\\','/');
+   const prepared=published?{source:fs.readFileSync(target,'utf8'),names:preparedProject.exports[relative]||[]}:
+       sourceContract.prepare(ts,fs.readFileSync(target,'utf8'),target,project,target.endsWith('.ts')?'typescript':'javascript');
+   const module={exports:{}};modules.set(target,module);
+   const previous=[context.__module,context.__require,context.__filename,context.__dirname];
+   context.__module=module;context.__require=name=>projectRequire(name,target);context.__filename=target;context.__dirname=path.dirname(target);
+   try {new vm.Script(`(function(require,module,exports,__filename,__dirname){${prepared.source}\n${prepared.names.map(name=>`module.exports[${JSON.stringify(name)}]=${name};`).join('\n')}})(__require,__module,__module.exports,__filename,__dirname);`,{filename:target}).runInContext(context,{timeout});}
+   finally {[context.__module,context.__require,context.__filename,context.__dirname]=previous;}
+   return module.exports;
+  }
+ }
+ return require(require.resolve(name,{paths:[path.dirname(parent)]}));
+};
+context.require=name=>projectRequire(name);
+for(const value of Object.values(published?preparedProject.metadata:sourceContract.contract(project).metadata)) {
+ if(!value?.public||!value.file||!value.sourceName)continue;
+ const target=path.resolve(project,value.file);
+ if(!target.startsWith(path.join(project,'src')+path.sep))throw Error('公开子程序文件越界');
+ if(target===filename)continue;
+ if(context[value.sourceName])throw Error('公开子程序名称重复');
+ context[value.sourceName]=(...args)=>{const exports=projectRequire('./'+path.relative(path.dirname(filename),target));if(typeof exports[value.sourceName]!=='function')throw Error('公开接口不存在');return exports[value.sourceName](...args);};
+}
 const debug=new inspector.Session();
 let debugRun = null;
 if(request.debug){
@@ -62,6 +96,7 @@ function invoke(handler,payload={}){context.__pcidePayload=payload;
  new vm.Script(`if(typeof ${handler} !== 'function')throw Error('event handler not found'); ${handler}(__pcidePayload);`,{filename:scriptUrl}).runInContext(context,{timeout:Math.max(1,Math.round((manifest.execution?.timeout_seconds||60)*1000))});}
 function run(){
  try{
+  new vm.Script(published?preparedProject.dataSource:sourceContract.dataSource(project),{filename:'pcide-program-data'}).runInContext(context,{timeout});
   new vm.Script(source,{filename:scriptUrl}).runInContext(context,{timeout:Math.max(1,Math.round((manifest.execution?.timeout_seconds||60)*1000))});
   send('ready');for(const handler of request.events||[])invoke(handler);
   if(request.keep_alive){

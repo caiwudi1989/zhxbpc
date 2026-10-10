@@ -103,23 +103,58 @@ def child_environment():
 MAX_CHILD_LOG_CHARS = 1024 * 1024
 
 
+def write_protocol(process, payload, on_timeout, timeout=3):
+    """A full/stalled Windows pipe must not block the supervising/UI thread."""
+    if len(payload) > 65536:
+        raise ValueError('child request exceeds protocol limit')
+    done = threading.Event()
+    errors = []
+    def write():
+        try:
+            process.stdin.write(payload + '\n')
+            process.stdin.flush()
+        except (OSError, ValueError) as exc:
+            errors.append(exc)
+        finally:
+            done.set()
+    writer = threading.Thread(target=write, name='pcide-protocol-writer', daemon=False)
+    writer.start()
+    if not done.wait(timeout):
+        on_timeout()
+        writer.join(3)
+        raise TimeoutError('child input pipe timeout; host terminated')
+    writer.join(3)
+    if errors:
+        raise errors[0]
+
+
 class ChildLog:
-    def __init__(self, stream, target, on_limit):
+    def __init__(self, stream, target, on_limit, on_output=None):
         self.stream, self.target, self.on_limit = stream, target, on_limit
+        self.on_output = on_output
         self.error = ""
         self.thread = threading.Thread(target=self._read, name="pcide-child-log", daemon=False)
         self.thread.start()
 
     def _read(self):
+        import codecs
         remaining = MAX_CHILD_LOG_CHARS
+        decoder = codecs.getincrementaldecoder('utf-8')('replace')
+        def publish(chunk):
+            nonlocal remaining
+            value = chunk[:remaining]
+            self.target.write(value)
+            self.target.flush()
+            if self.on_output and value:self.on_output(value)
+            remaining -= len(value)
+            if not remaining:self.on_limit()
         try:
-            while chunk := self.stream.read(8192):
-                self.target.write(chunk[:remaining])
-                self.target.flush()
-                remaining -= min(len(chunk), remaining)
-                if not remaining:
-                    self.on_limit()
-                    return
+            # read1 returns available bytes; read(8192) can hide a short prompt
+            # until process exit. Incremental decoding preserves split UTF-8.
+            while chunk := self.stream.buffer.read1(8192):
+                publish(decoder.decode(chunk))
+                if not remaining:return
+            publish(decoder.decode(b'',final=True))
         except (OSError, ValueError) as exc:
             self.error = str(exc)
 
@@ -128,3 +163,60 @@ class ChildLog:
         if self.thread.is_alive():
             raise RuntimeError("child log reader did not exit")
         self.stream.close()
+
+
+def run_bounded(command, *, cwd, timeout, log_path, cancel=None, environment=None, input_lines=None, on_output=None):
+    """Owned tool process with a bounded combined log and deadline."""
+    import time
+    from pathlib import Path
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    process = subprocess.Popen(command, cwd=cwd, env=environment or child_environment(),
+                               stdin=subprocess.PIPE if input_lines is not None else None, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    job = reader = None
+    exceeded = threading.Event()
+    try:
+        job = ProcessJob(process)
+        with log_path.open("w", encoding="utf-8") as log:
+            def limit():
+                exceeded.set()
+                job.close()
+            reader = ChildLog(process.stdout, log, limit, on_output)
+            deadline = time.monotonic() + timeout
+            while process.poll() is None:
+                if cancel is not None and cancel.is_set():
+                    raise RuntimeError("child tool cancelled")
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("child tool timeout")
+                if input_lines is not None:
+                    import queue
+                    try:
+                        line = input_lines.get_nowait()
+                    except queue.Empty:
+                        pass
+                    else:
+                        write_protocol(process, line, timeout=1, on_timeout=job.close)
+                try:
+                    process.wait(timeout=0.05)
+                except subprocess.TimeoutExpired:
+                    pass
+            job.close()
+            reader.close()
+            reader = None
+            if exceeded.is_set():
+                raise RuntimeError("child tool output limit exceeded")
+            if process.returncode:
+                raise RuntimeError(f"child tool exited {process.returncode}; see {log_path}")
+        return process.returncode
+    finally:
+        if job:
+            job.close()
+        elif process.poll() is None:
+            process.kill()
+        process.wait(timeout=3)
+        if reader:
+            reader.close()
+        if process.stdin:
+            process.stdin.close()

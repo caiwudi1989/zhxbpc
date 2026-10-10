@@ -4,8 +4,9 @@ import json
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import (QComboBox, QFileDialog, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
-    QListWidget, QPushButton, QPlainTextEdit, QSplitter, QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QGraphicsScene, QGraphicsView, QHBoxLayout, QLabel,
+    QListWidget, QPushButton, QPlainTextEdit, QSplitter, QSpinBox, QTableWidget, QTableWidgetItem,
+    QHeaderView, QSizePolicy, QVBoxLayout, QWidget)
 
 from pcide.core.label_io import copy_images_into_dataset, list_images, read_boxes, label_path_for
 from pcide.core.vision import VisionWorkbench
@@ -79,25 +80,31 @@ class VisionPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         from PySide6.QtWidgets import QGridLayout
-        bar = QGridLayout()
+        bar_host = QWidget()
+        bar_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        bar = QGridLayout(bar_host)
+        bar.setContentsMargins(0, 0, 0, 0)
         bar.setSpacing(3)
-        for index, (title, callback) in enumerate((("导入图片", self.import_images), ("清除标注", self.clear_boxes),
+        for index, (title, callback) in enumerate((("导入图片", self.import_images), ("删除所选标注", self.delete_boxes), ("清除标注", self.clear_boxes),
                                 ("模拟 OCR/YOLO", self.simulate), ("导入模型", self.import_model),
                                 ("OCR", self.real_ocr), ("模型测试", self.test_model), ("训练", self.train), ("停止训练", self.stop_training),
                                 ("导出 ONNX", self.export_model))):
             button = QPushButton(title)
             button.clicked.connect(callback)
             bar.addWidget(button, index // 5, index % 5)
-        layout.addLayout(bar)
-        parameters = QHBoxLayout()
+        layout.addWidget(bar_host)
+        parameters_host = QWidget()
+        parameters_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        parameters = QHBoxLayout(parameters_host)
+        parameters.setContentsMargins(0, 0, 0, 0)
         parameters.addWidget(QLabel("训练轮数"))
         self.epochs = QSpinBox()
         self.epochs.setRange(1, 10000)
         self.epochs.setValue(1)
         parameters.addWidget(self.epochs)
-        parameters.addWidget(QLabel("处理器"))
+        parameters.addWidget(QLabel('框选标注使用类别 0；模拟结果仅用于流程检查。'))
         parameters.addStretch()
-        layout.addLayout(parameters)
+        layout.addWidget(parameters_host)
         split = QSplitter()
         self.images = QListWidget()
         self.images.currentTextChanged.connect(self.select_image)
@@ -106,9 +113,23 @@ class VisionPanel(QWidget):
         self.info = QPlainTextEdit()
         self.info.setReadOnly(True)
         self.info.document().setMaximumBlockCount(1000)
+        self.annotations = QTableWidget(0, 2)
+        self.annotations.setHorizontalHeaderLabels(['类别', '矩形 (cx, cy, w, h)'])
+        self.annotations.setToolTip('矩形坐标和尺寸相对于图片归一化为 0..1；选中行后可删除对应标注')
+        self.annotations.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.annotations.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.annotations.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.annotations.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        details = QWidget()
+        details_layout = QVBoxLayout(details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.addWidget(QLabel('当前图片的标注'))
+        details_layout.addWidget(self.annotations, 1)
+        details_layout.addWidget(QLabel('模型与处理结果'))
+        details_layout.addWidget(self.info, 2)
         split.addWidget(self.images)
         split.addWidget(self.canvas)
-        split.addWidget(self.info)
+        split.addWidget(details)
         split.setSizes([130, 600, 240])
         layout.addWidget(split)
         self.set_project(project)
@@ -119,6 +140,7 @@ class VisionPanel(QWidget):
             self.trainer.deleteLater()
             self.trainer = None
         self.image, self.boxes = None, []
+        self._refresh_annotations()
         self.canvas.origin = None
         self.canvas.rect_item = None
         self.canvas.image_size = None
@@ -144,19 +166,50 @@ class VisionPanel(QWidget):
                 self.image = self.vision.dataset / "images" / name
                 self.boxes = read_boxes(label_path_for(self.image, self.vision.dataset))
                 self.canvas.load_image(self.image, self.boxes)
-            except ValueError as exc:
+                self._refresh_annotations()
+            except (ValueError, OSError) as exc:
+                self.image, self.boxes = None, []
+                self.canvas.image_size = None
+                self.canvas.canvas.clear()
+                self._refresh_annotations()
                 self.message.emit(str(exc))
 
     def add_box(self, box):
         if self.image:
             self.boxes.append(box)
             self.vision.add_annotation(self.image.name, self.boxes)
+            self._refresh_annotations()
+            self.info.setPlainText(json.dumps(self.vision.model_manifest(), ensure_ascii=False, indent=2))
+
+    def _refresh_annotations(self):
+        self.annotations.setRowCount(len(self.boxes))
+        for row, box in enumerate(self.boxes):
+            self.annotations.setItem(row, 0, QTableWidgetItem(str(box['class_id'])))
+            value = ', '.join(f'{box[key]:.3f}' for key in ('cx', 'cy', 'w', 'h'))
+            item = QTableWidgetItem(value)
+            item.setToolTip(value)
+            self.annotations.setItem(row, 1, item)
+
+    def delete_boxes(self):
+        selected = {index.row() for index in self.annotations.selectionModel().selectedRows()}
+        if not self.image or not selected:
+            self.message.emit('请先选择图片和要删除的标注行')
+            return
+        self.boxes = [box for index, box in enumerate(self.boxes) if index not in selected]
+        self.vision.add_annotation(self.image.name, self.boxes)
+        self.canvas.load_image(self.image, self.boxes)
+        self._refresh_annotations()
+        self.info.setPlainText(json.dumps(self.vision.model_manifest(), ensure_ascii=False, indent=2))
 
     def clear_boxes(self):
         if self.image:
             self.boxes = []
             self.vision.add_annotation(self.image.name, [])
             self.canvas.load_image(self.image, [])
+            self._refresh_annotations()
+            self.info.setPlainText(json.dumps(self.vision.model_manifest(), ensure_ascii=False, indent=2))
+        else:
+            self.message.emit('请先选择一张数据集图片')
 
     def simulate(self):
         result = {"ocr": self.vision.ocr("screen"), "yolo": self.vision.yolo("screen"), "simulated": True}
@@ -166,6 +219,8 @@ class VisionPanel(QWidget):
         if self.image:
             vision, image = self.vision, self.image
             self.execute_requested.emit(lambda: vision.ocr(image, simulated=False), self._result)
+        else:
+            self.message.emit('请先选择一张数据集图片')
 
     def _result(self, result):
         self.info.setPlainText(json.dumps(result, ensure_ascii=False, indent=2))
@@ -180,6 +235,9 @@ class VisionPanel(QWidget):
                 self.message.emit(str(exc))
 
     def test_model(self):
+        if not self.image:
+            self.message.emit('请先选择一张数据集图片')
+            return
         path, _ = QFileDialog.getOpenFileName(self, "ONNX 模型", str(self.vision.models), "ONNX (*.onnx)")
         if path and self.image:
             vision, image = self.vision, self.image

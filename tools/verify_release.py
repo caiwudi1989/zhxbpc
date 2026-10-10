@@ -18,7 +18,7 @@ root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "src"))
 from pcide.core.builder import FORBIDDEN_PARTS, FORBIDDEN_SOURCE
 from pcide.core.paths import Paths, atomic_write_json
-from pcide.core.processes import ProcessJob
+from pcide.core.processes import ProcessJob, run_bounded
 from pcide.core.project import Project
 from pcide.core.plugins import write_example_plugins
 
@@ -54,21 +54,7 @@ def prepare_probes(workspace, paths):
 
 def run_owned(command, environment, cwd, log_path, timeout):
     started = time.perf_counter()
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=log, stderr=subprocess.STDOUT,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        job = None
-        try:
-            job = ProcessJob(process)
-            code = process.wait(timeout=timeout)
-        finally:
-            if job:
-                job.close()
-            elif process.poll() is None:
-                process.kill()
-            process.wait(timeout=5)
-    if code:
-        raise RuntimeError(f"verification exited {code}: {log_path}")
+    run_bounded(command, cwd=cwd, environment=environment, timeout=timeout, log_path=log_path)
     return round(time.perf_counter() - started, 3)
 
 
@@ -76,7 +62,9 @@ def check_archive(artifact, language):
     from PyInstaller.archive.readers import CArchiveReader
     members = list(CArchiveReader(str(artifact)).toc)
     payload = [name.replace("\\", "/") for name in members if name.replace("\\", "/").startswith("payload/")]
-    suffix = ".pyc" if language == "python" else ".jsc"
+    if language not in {"python", "zhxb", "javascript", "typescript"}:
+        raise ValueError(f"unsupported payload language: {language}")
+    suffix = ".pyc" if language in {"python", "zhxb"} else ".jsc"
     if "payload/src/main" + suffix not in payload:
         raise RuntimeError("compiled project entry is missing")
     for name in members:

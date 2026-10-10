@@ -4,12 +4,42 @@ import copy
 from pathlib import Path
 
 from PySide6.QtCore import QDateTime, QEvent, Qt, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QAction, QColor, QPainter, QKeySequence
 from PySide6.QtWidgets import (QCalendarWidget, QCheckBox, QComboBox, QDateTimeEdit, QFrame, QGroupBox, QLabel, QLineEdit, QListWidget,
     QMenuBar, QProgressBar, QPushButton, QRadioButton, QScrollArea, QSlider, QSpinBox, QSplitter, QStatusBar,
     QTabWidget, QTableWidget, QTextBrowser, QTextEdit, QToolBar, QTreeWidget, QTreeWidgetItem, QWidget)
 
 from pcide.core.project import validate_form
+from pcide.core.menus import validate_menu
+
+
+def render_menu(bar, definition, on_trigger=None):
+    """Render only validated definitions; callbacks carry the selected item ID."""
+    definition = validate_menu(definition)
+    bar.clear()
+    def append(parent, nodes):
+        for node in nodes:
+            if node["kind"] == "separator":
+                action = QAction(parent)
+                action.setSeparator(True)
+                parent.addAction(action)
+            elif node["kind"] == "menu":
+                submenu = parent.addMenu(node["text"])
+                action = submenu.menuAction()
+                append(submenu, node["children"])
+            else:
+                action = parent.addAction(node["text"])
+                action.setCheckable(node["checkable"])
+                action.setChecked(node["checked"])
+                if node["shortcut"]:
+                    action.setShortcut(QKeySequence(node["shortcut"]))
+                if on_trigger:
+                    action.triggered.connect(lambda checked=False, item=node: on_trigger(item, checked))
+            action.setObjectName(node["id"])
+            action.setData(node["id"])
+            action.setEnabled(node["enabled"])
+            action.setVisible(node["visible"])
+    append(bar, definition)
 
 
 class Canvas(QWidget):
@@ -85,7 +115,10 @@ def create_control(kind, parent, props):
         widget.setPlainText(text or "网页视图")
     elif kind == "MenuBar":
         widget = QMenuBar(parent)
-        widget.addMenu(text or "菜单")
+        if "menu" in props:
+            render_menu(widget, props["menu"])
+        else:
+            widget.addMenu(text or "菜单")
     elif kind == "ToolBar":
         widget = QToolBar(text or "工具栏", parent)
     elif kind == "StatusBar":
@@ -244,7 +277,7 @@ class RuntimeForm(QWidget):
         if data:
             kind = {QEvent.Type.MouseButtonDblClick: "double_click", QEvent.Type.MouseButtonPress: "mouse_down",
                     QEvent.Type.KeyPress: "key_down", QEvent.Type.Resize: "resize"}.get(event.type())
-            if event.type() == QEvent.Type.MouseButtonRelease and not hasattr(widget, "clicked"):
+            if event.type() == QEvent.Type.MouseButtonRelease and not hasattr(widget, "clicked") and not isinstance(widget, QMenuBar):
                 kind = "click"
             handler = data["events"].get(kind)
             if handler:
@@ -262,6 +295,9 @@ class RuntimeForm(QWidget):
         if control_id not in self.widgets:
             raise ValueError(f"unknown UI control: {control_id}")
         widget = self.widgets[control_id]
+        control = next(c for c in self.form["controls"] if c["id"] == control_id)
+        if isinstance(widget, QMenuBar) and "menu" in properties:
+            control["properties"]["menu"] = validate_menu(properties["menu"])
         widget.blockSignals(True)
         try:
             if "text" in properties:
@@ -327,12 +363,20 @@ class RuntimeForm(QWidget):
                     for item in items:
                         QTreeWidgetItem(widget, [item])
                 elif isinstance(widget, QMenuBar):
-                    widget.clear()
-                    for item in items:
-                        widget.addMenu(item)
+                    if "menu" not in control["properties"]:
+                        widget.clear()
+                        for item in items:
+                            widget.addMenu(item)
                 elif isinstance(widget, QToolBar):
                     widget.clear()
                     widget.addAction(" | ".join(items))
+            if isinstance(widget, QMenuBar) and "menu" in control["properties"] and ("menu" in properties or "items" in properties):
+                def triggered(item, checked):
+                    handler = item["handler"] or control["events"].get("click", "")
+                    if handler:
+                        self.event.emit(handler, {"id": control_id, "event": "menu", "menu_id": item["id"],
+                                                  "text": item["text"], "checked": checked})
+                render_menu(widget, control["properties"]["menu"], triggered)
             if "headers" in properties:
                 headers = properties["headers"]
                 if isinstance(headers, str):

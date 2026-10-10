@@ -222,6 +222,23 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(MarketError):
             validate_catalog({"version": 1, "plugins": [{"id": "x", "version": "1.0.0", "sha256": "bad"}]})
 
+    def test_chinese_compiler_supports_editable_procedure_metadata_and_assignments(self):
+        source = (".版本 2\n.程序集 窗口程序集1\n"
+                  ".子程序 主程序(输入) , 文本型, 公开, 启动入口\n"
+                  ".参数 备用, 文本型\n"
+                  ".局部变量 计数, 整数型, 1, 迭代次数\n"
+                  "赋值(计数, 计数 + 1)\n"
+                  "返回(输入)\n")
+        parsed = parse(source)
+        self.assertEqual(parsed.procedures[0].name, "主程序")
+        self.assertTrue(parsed.procedures[0].public)
+        self.assertEqual(parsed.procedures[0].parameters[0]["name"], "输入")
+        self.assertEqual(parsed.procedures[0].locals[0]["default"], "1")
+        generated = emit_python(parsed)
+        ast.parse(generated)
+        self.assertIn("计数 = 1", generated)
+        self.assertIn("return 输入", generated)
+
     def test_unity_bridge_contract(self):
         unity = self.temp / "UnityGame"
         for folder in ("Assets", "Packages", "ProjectSettings"):

@@ -3,16 +3,22 @@ from __future__ import annotations
 import copy
 
 from PySide6.QtCore import QMimeData, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QDrag, QFont, QPainter, QPen, QKeySequence
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject, QGraphicsScene, QGraphicsView, QMenu, QMessageBox, QTreeWidget, QTreeWidgetItem
+from PySide6.QtGui import QBrush, QColor, QDrag, QFont, QIcon, QPainter, QPen, QKeySequence
+from PySide6.QtWidgets import (QGraphicsItem, QGraphicsObject, QGraphicsScene, QGraphicsView, QMenu,
+                               QMessageBox, QStyle, QTreeWidget, QTreeWidgetItem)
 
-from pcide.core.control_catalog import control_defaults
+from pcide.core.control_catalog import control_defaults, CONTROL_LABELS
+from .control_icons import control_icon
 from pcide.core.project import CONTROL_TYPES, ControlModel, unique_control_name, validate_form
 
-CONTROL_LABELS = dict(zip(CONTROL_TYPES, ("按钮", "标签", "输入框", "多行文本", "复选框", "单选框", "下拉框",
-                         "列表框", "树形", "表格", "进度条", "滑块", "数字输入", "日期时间", "分组框", "标签页", "画布",
-                         "图片", "富文本", "网页视图", "菜单栏", "工具栏", "状态栏", "日历", "分割器", "滚动区", "定时器")))
 MIME_CONTROL = "application/x-pcide-control"
+ARRANGEMENTS = (
+    ("左对齐", "left"), ("右对齐", "right"), ("上对齐", "top"), ("下对齐", "bottom"),
+    ("水平居中对齐", "horizontal"), ("垂直居中对齐", "vertical"),
+    ("等宽", "width"), ("等高", "height"), ("等大", "size"),
+    ("水平等间距", "distribute_x"), ("垂直等间距", "distribute_y"),
+    ("在父容器中水平居中", "parent_x"), ("在父容器中垂直居中", "parent_y"),
+)
 
 # The designer shows the complete window chrome while keeping form coordinates
 # relative to the client area, just like the runtime window.
@@ -29,10 +35,13 @@ CONTROL_GROUPS = {
 
 
 class Toolbox(QTreeWidget):
+    controlRequested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setIndentation(16)
+        self._display_mode = "text"
         for group, controls in CONTROL_GROUPS.items():
             parent_item = QTreeWidgetItem(self, [group])
             parent_item.setFlags(parent_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsDragEnabled)
@@ -40,7 +49,36 @@ class Toolbox(QTreeWidget):
             for name in controls:
                 item = QTreeWidgetItem(parent_item, [CONTROL_LABELS[name]])
                 item.setData(0, Qt.ItemDataRole.UserRole, name)
+        self.set_display_mode("text")
         self.setDragEnabled(True)
+
+    def set_display_mode(self, mode):
+        """Switch the toolbox between a compact icon list and plain text."""
+        mode = "icon" if str(mode).lower() in {"icon", "icons", "图标"} else "text"
+        self._display_mode = mode
+        for group_index in range(self.topLevelItemCount()):
+            group = self.topLevelItem(group_index)
+            for item_index in range(group.childCount()):
+                item = group.child(item_index)
+                item.setIcon(0, control_icon(item.data(0, Qt.ItemDataRole.UserRole)) if mode == "icon" else QIcon())
+        # QTreeWidget has no separate icon-only mode; the menu below provides
+        # the compact icon presentation while this view remains keyboard and
+        # drag friendly.  Keep indentation stable for text users.
+        self.setIndentation(10 if mode == "icon" else 16)
+
+    def menu(self, parent=None):
+        """Create a categorized popup menu for click-to-add controls."""
+        popup = QMenu(parent or self)
+        popup._categories = []  # Retain Python wrappers for Qt submenu ownership.
+        for group, controls in CONTROL_GROUPS.items():
+            submenu = QMenu(group, popup)
+            popup.addMenu(submenu)
+            popup._categories.append(submenu)
+            for name in controls:
+                action = submenu.addAction(control_icon(name), CONTROL_LABELS[name])
+                action.setData(name)
+                action.triggered.connect(lambda _checked=False, kind=name: self.controlRequested.emit(kind))
+        return popup
 
     def startDrag(self, actions):
         if self.currentItem() and self.currentItem().data(0, Qt.ItemDataRole.UserRole):
@@ -58,7 +96,8 @@ class ControlItem(QGraphicsObject):
         self.designer = designer
         self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable | QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                       QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
-        self.setPos(designer.client_origin().x() + data["x"], designer.client_origin().y() + data["y"])
+        origin = designer.control_origin(data)
+        self.setPos(origin.x() + data["x"], origin.y() + data["y"])
         self.resize_mode = False
 
     def boundingRect(self):
@@ -113,13 +152,13 @@ class ControlItem(QGraphicsObject):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
             size = self.designer.form.get("grid", {}).get("size", 10)
             snap = self.designer.form.get("grid", {}).get("snap", True)
-            origin = self.designer.client_origin()
+            origin = self.designer.control_origin(self.data)
             x, y = max(0, value.x() - origin.x()), max(0, value.y() - origin.y())
             if snap:
                 x, y = round(x / size) * size, round(y / size) * size
             return QPointF(origin.x() + min(x, 10000), origin.y() + min(y, 10000))
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            origin = self.designer.client_origin()
+            origin = self.designer.control_origin(self.data)
             self.data["x"], self.data["y"] = round(self.pos().x() - origin.x()), round(self.pos().y() - origin.y())
         return super().itemChange(change, value)
 
@@ -190,10 +229,17 @@ class FormDesigner(QGraphicsView):
         backdrop = self.scene_obj.addRect(origin.x(), origin.y(), metadata["width"], metadata["height"],
                                          QPen(QColor("#bac3cd")), QBrush(QColor(metadata.get("background", "#fff"))))
         backdrop.setZValue(-2)
-        for data in self.form["controls"]:
-            item = ControlItem(data, self)
-            self.scene_obj.addItem(item)
-            self.items_by_id[data["id"]] = item
+        remaining = list(self.form["controls"])
+        while remaining:
+            ready = [data for data in remaining if not data["parent"] or data["parent"] in self.items_by_id]
+            for data in ready:
+                item = ControlItem(data, self)
+                if data["parent"]:
+                    item.setParentItem(self.items_by_id[data["parent"]])
+                else:
+                    self.scene_obj.addItem(item)
+                self.items_by_id[data["id"]] = item
+                remaining.remove(data)
         if not preserve_history:
             self.undo_states.clear()
             self.redo_states.clear()
@@ -268,6 +314,9 @@ class FormDesigner(QGraphicsView):
 
     def selected_items(self):
         return sorted((i for i in self.scene_obj.selectedItems() if isinstance(i, ControlItem)), key=lambda i: i.data["id"])
+
+    def control_origin(self, data):
+        return QPointF(0, 0) if data["parent"] else self.client_origin()
 
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.StandardKey.Copy):
@@ -357,13 +406,15 @@ class FormDesigner(QGraphicsView):
             return
         self.begin_edit()
         used = {c["id"] for c in self.form["controls"]}
+        copied_ids = {c["id"] for c in self.clipboard}
         clones = {}
         for source in self.clipboard:
             data = copy.deepcopy(source)
             name = unique_control_name(data["type"], used)
             used.add(name)
             clones[data["id"]] = name
-            data.update(id=name, name=name, x=data["x"] + 20, y=data["y"] + 20)
+            offset = 0 if data["parent"] in copied_ids else 20
+            data.update(id=name, name=name, x=data["x"] + offset, y=data["y"] + offset)
             self.form["controls"].append(data)
         for data in self.form["controls"]:
             if data["id"] in clones.values() and data["parent"] in clones:
@@ -376,10 +427,16 @@ class FormDesigner(QGraphicsView):
         menu = QMenu(self)
         copy_action = menu.addAction("复制控件")
         paste_action = menu.addAction("粘贴控件")
+        paste_action.setEnabled(bool(self.clipboard))
+        if hasattr(self, "arrangement_actions"):
+            arrange_menu = menu.addMenu("排列")
+            arrange_menu.addActions(self.arrangement_actions)
         menu.addSeparator()
         click_event = menu.addAction("编辑单击事件")
         double_click_event = menu.addAction("编辑双击事件")
         change_event = menu.addAction("编辑状态改变事件")
+        from .properties import control_events
+        change_event.setEnabled('change' in control_events(item.data['type']))
         menu.addSeparator()
         delete_action = menu.addAction("删除控件")
         chosen = menu.exec(position)
@@ -411,25 +468,77 @@ class FormDesigner(QGraphicsView):
         for data in self.form["controls"]:
             if data["parent"] in removed:
                 data["parent"] = ""
+                position = self.items_by_id[data["id"]].scenePos() - self.client_origin()
+                data["x"], data["y"] = max(0, min(10000, round(position.x()))), max(0, min(10000, round(position.y())))
         self.commit_edit()
         self.load(self.form, True)
 
     def align(self, mode):
-        selected = self.selected_items()
-        if not selected:
+        if mode not in {value for _, value in ARRANGEMENTS}:
+            raise ValueError("不支持的排列方式")
+        identities = {item.data["id"] for item in self.selected_items()}
+        if not identities:
             return
+        candidate = copy.deepcopy(self.form)
+        groups = {}
+        for data in candidate["controls"]:
+            if data["id"] in identities:
+                groups.setdefault(data["parent"], []).append(data)
+        for parent, selected in groups.items():
+            anchor = selected[0]
+            if mode.startswith("distribute"):
+                if len(selected) < 3:
+                    continue
+                axis, dimension = ("x", "width") if mode.endswith("x") else ("y", "height")
+                selected.sort(key=lambda c: c[axis])
+                start = selected[0][axis]
+                end = selected[-1][axis] + selected[-1][dimension]
+                gap = (end - start - sum(c[dimension] for c in selected)) / (len(selected) - 1)
+                position = start
+                for data in selected:
+                    data[axis] = max(0, min(10000, round(position)))
+                    position += data[dimension] + gap
+                continue
+            container = next((c for c in candidate["controls"] if c["id"] == parent), candidate["form"])
+            for data in selected:
+                if mode in {"width", "size"}:
+                    data["width"] = anchor["width"]
+                if mode in {"height", "size"}:
+                    data["height"] = anchor["height"]
+                if mode in {"left", "top"}:
+                    axis = "x" if mode == "left" else "y"
+                    data[axis] = anchor[axis]
+                elif mode in {"right", "bottom", "horizontal", "vertical"}:
+                    axis, dimension = ("x", "width") if mode in {"right", "horizontal"} else ("y", "height")
+                    factor = .5 if mode in {"horizontal", "vertical"} else 1
+                    data[axis] = max(0, min(10000, round(anchor[axis] + (anchor[dimension] - data[dimension]) * factor)))
+                elif mode in {"parent_x", "parent_y"}:
+                    axis, dimension = ("x", "width") if mode == "parent_x" else ("y", "height")
+                    data[axis] = max(0, (container[dimension] - data[dimension]) // 2)
+        validate_form(candidate)
         self.begin_edit()
-        anchor = selected[0].data
-        for item in selected:
-            if mode == "left":
-                item.setX(self.client_origin().x() + anchor["x"])
-            elif mode == "top":
-                item.setY(self.client_origin().y() + anchor["y"])
-            elif mode == "width":
-                item.prepareGeometryChange()
-                item.data["width"] = anchor["width"]
-                item.update()
+        self.form = candidate
         self.commit_edit()
+        self.load(self.form, True)
+        for identity in identities:
+            self.items_by_id[identity].setSelected(True)
+
+    def select_all(self):
+        for item in self.items_by_id.values():
+            item.setSelected(True)
+
+    def change_order(self, front):
+        identities = {item.data["id"] for item in self.selected_items()}
+        if not identities:
+            return
+        selected = [c for c in self.form["controls"] if c["id"] in identities]
+        remaining = [c for c in self.form["controls"] if c["id"] not in identities]
+        self.begin_edit()
+        self.form["controls"] = remaining + selected if front else selected + remaining
+        self.commit_edit()
+        self.load(self.form, True)
+        for identity in identities:
+            self.items_by_id[identity].setSelected(True)
 
     def undo(self):
         if self.undo_states:

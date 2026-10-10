@@ -5,15 +5,31 @@ html,body,#editor{width:100%;height:100%;margin:0;overflow:hidden;background:#fb
 .monaco-editor .monaco-scrollable-element{background-color:#fbfbfa!important}
 .monaco-editor .margin{background-color:#f3f5f7!important}
 .pcide-breakpoint{background:#d5453e;border-radius:50%;width:10px!important;height:10px!important;margin:3px}
-.routine-zone{position:relative;z-index:20;pointer-events:auto;padding:10px 0 4px 0;font:14px 'Microsoft YaHei UI',sans-serif;color:#202124;box-sizing:border-box;background:#fbfbfa}
-.routine-zone .routine-line-number{position:absolute;left:7px;top:12px;width:30px;text-align:right;color:#7b8794;font:12px Consolas,'Microsoft YaHei UI',monospace;line-height:20px;pointer-events:none}
-.routine-zone .routine-bar{display:flex;align-items:center;gap:6px;height:22px;margin:0 0 3px 60px;font-weight:bold;color:#3b4a56;cursor:pointer;user-select:none}
-.routine-zone .routine-toggle{position:absolute;left:38px;top:10px;width:20px;height:20px;padding:0;border:0;background:transparent;color:#3b4a56;line-height:16px;font-size:16px;font-weight:bold;cursor:pointer;pointer-events:auto}
-.routine-zone .routine-public.enabled{color:#d52222;font-weight:bold}
-.routine-zone .routine-content{overflow:hidden}
-.routine-zone table{border-collapse:collapse;margin:0 0 4px 0;background:#fbfbfa}
-.routine-zone th,.routine-zone td{border:1px solid #9daba5;padding:3px 8px;min-width:55px;height:20px;text-align:left;font-weight:normal}
-.routine-zone th{background:#e7eee6}.routine-zone input,.routine-zone select{box-sizing:border-box;width:100%;min-width:120px;height:26px;padding:2px 6px;border:1px solid #aeb9b2;background:#fff;color:#0000aa;font:inherit;outline:none;pointer-events:auto}.routine-zone input:focus,.routine-zone select:focus{border:1px solid #176ac6;box-shadow:inset 0 0 0 1px #cfe3ff}.routine-zone .routine-name.locked{background:#eef1f3;color:#59636c;cursor:not-allowed}.routine-zone .routine-public{width:18px;min-width:18px;height:18px;padding:0;cursor:pointer;accent-color:#d52222;vertical-align:middle}.routine-zone .routine-public.enabled{color:#d52222;font-weight:bold}.routine-zone .routine-add-local,.routine-zone .routine-remove-local{height:24px;padding:1px 8px;border:1px solid #9daba5;background:#eef3ef;color:#26313d;cursor:pointer}.routine-zone .routine-add-local{margin:0 0 4px 60px}.routine-zone .routine-remove-local{min-width:44px;width:auto}
+.routine-zone{position:relative;z-index:20;pointer-events:auto;padding:2px 12px 3px 0;font:13px 'Microsoft YaHei UI',sans-serif;color:#26313d;box-sizing:border-box;background:#fbfbfa}
+.routine-frame{width:100%;box-sizing:border-box}
+.routine-gutter{position:relative;color:#7b8794;pointer-events:none}
+.routine-line-number{position:absolute;top:28px;text-align:right;font:12px Consolas,'Microsoft YaHei UI',monospace;line-height:24px}
+.routine-zone table{width:100%;table-layout:fixed;border-collapse:collapse;margin:0;background:#fbfbfa}
+.routine-zone th,.routine-zone td{border:1px solid #b5c1bb;padding:1px 6px;height:23px;text-align:left;font-weight:normal;box-sizing:border-box;overflow:hidden}
+.routine-zone th{height:23px;background:#e7eee6;color:#35483e}
+.routine-zone input,.routine-zone select{box-sizing:border-box;width:100%;min-width:0;height:26px;padding:2px 4px;border:1px solid transparent;background:transparent;color:#0000aa;font:inherit;outline:none;pointer-events:auto}
+.routine-zone input:focus,.routine-zone select:focus{border-color:#176ac6;background:#fff;box-shadow:inset 0 0 0 1px #cfe3ff}
+.routine-zone .routine-name-cell{display:flex;align-items:center;gap:2px;min-width:0}
+.routine-zone .routine-name{flex:1;cursor:text;font-weight:600}
+.routine-zone .routine-toggle{flex:none;width:18px;height:24px;padding:0;border:0;background:transparent;color:#35483e;font-size:15px;cursor:pointer}
+.routine-zone .routine-public{width:17px;height:17px;padding:0;cursor:pointer;accent-color:#d52222;vertical-align:middle}
+.routine-zone .routine-public-cell{text-align:center}
+.routine-zone .routine-content[hidden]{display:none}
+.routine-zone .routine-section{display:flex;align-items:center;gap:8px;height:27px;padding:0 6px;border:1px solid #b5c1bb;border-top:0;box-sizing:border-box;background:#f3f6f2;color:#526357}
+.routine-zone .routine-section .routine-count{font-size:12px;color:#697970}
+.routine-zone .routine-section button{margin-left:auto}
+.routine-zone .routine-add-local,.routine-zone .routine-remove-local{height:22px;padding:0 6px;border:1px solid transparent;background:transparent;color:#176ac6;cursor:pointer;font:inherit;white-space:nowrap}
+.routine-zone .routine-add-local:hover,.routine-zone .routine-remove-local:hover{border-color:#aeb9b2;background:#fff}
+.routine-zone .routine-params th,.routine-zone .routine-locals th{border-top:0}
+.routine-zone .routine-remove-local{width:100%;padding:0;font-size:12px}
+.routine-zone.collapsed .routine-head{display:none}
+#editor.source-fully-hidden .view-lines,#editor.source-fully-hidden .cursors-layer,
+#editor.source-fully-hidden .view-overlays,#editor.source-fully-hidden .margin-view-overlays{visibility:hidden}
 </style></head><body><div id="editor"></div>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <script src="pcide://editor/vs/loader.js"></script>
@@ -24,6 +40,10 @@ require.config({paths:{vs:'pcide://editor/vs'}});
 require(['vs/editor/editor.main'],()=>{
  new QWebChannel(qt.webChannelTransport,channel=>{
   const bridge=channel.objects.bridge, models=new Map();
+  monaco.languages.register({id:'gdscript'});
+  monaco.languages.setMonarchTokensProvider('gdscript',{tokenizer:{root:[
+   [/#.*$/,'comment'],[/"(?:[^"\\]|\\.)*"/,'string'],[/\b(?:extends|func|var|const|signal|if|else|elif|for|while|return|true|false|null|await)\b/,'keyword'],[/\b\d+(?:\.\d+)?\b/,'number']
+  ]}});
   let hiddenLineNumbers=new Set();
   monaco.editor.defineTheme('pcide-light',{base:'vs',inherit:true,rules:[
    {token:'comment',foreground:'#6b8e23'},{token:'string',foreground:'#a31515'},
@@ -42,14 +62,25 @@ require(['vs/editor/editor.main'],()=>{
    suggestOnTriggerCharacters:true,wordBasedSuggestions:'currentDocument',
    padding:{top:8,bottom:12},smoothScrolling:true,foldingStrategy:'indentation',showFoldingControls:'never'
   });
+  const dropHost=document.getElementById('editor');
+  dropHost.addEventListener('dragover',event=>{if(event.dataTransfer?.types.includes('text/plain')){event.preventDefault();event.dataTransfer.dropEffect='copy';}});
+  dropHost.addEventListener('drop',event=>{
+   const text=event.dataTransfer?.getData('text/plain');
+   if(!text||editor.getOption(monaco.editor.EditorOption.readOnly))return;
+   event.preventDefault();event.stopPropagation();
+   const target=editor.getTargetAtClientPoint(event.clientX,event.clientY);
+   if(target?.position)editor.setPosition(target.position);
+   ensureSourceEditable();
+   editor.executeEdits('support-library-drop',[{range:editor.getSelection(),text,forceMoveMarkers:true}]);editor.focus();
+  });
   const kindMap={variable:monaco.languages.CompletionItemKind.Variable,
    constant:monaco.languages.CompletionItemKind.Constant,function:monaco.languages.CompletionItemKind.Function,
    method:monaco.languages.CompletionItemKind.Method,keyword:monaco.languages.CompletionItemKind.Keyword,
    class:monaco.languages.CompletionItemKind.Class,field:monaco.languages.CompletionItemKind.Field,
    snippet:monaco.languages.CompletionItemKind.Snippet};
-  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[],routineCollapsed={},routineInfo={},startupRoutines=[];
+  let path='',loading=false,decorations=[],completionItems=[],chinese=false,words={},zones=[],routineLayouts=[],routineCollapsed={},routineInfo={},startupRoutines=[],customTypes=[];
   function projectText(text,reverse=false){
-   if(currentLanguage==='zhxb')return text;
+   if(currentLanguage!=='python')return text;
    const map=reverse?Object.fromEntries(Object.entries(words).map(([a,b])=>[b,a])):words;
    // In a Unicode JavaScript regexp, `\#` is an invalid identity escape.
    // Keep the hash literal unescaped so Chromium can parse the editor bundle.
@@ -57,93 +88,227 @@ require(['vs/editor/editor.main'],()=>{
     /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[\p{L}_][\p{L}\p{N}_]*/gmu;
    return text.replace(tokens,token=>map[token]||token);
   }
+  function metadataMatchesFile(item){
+   const current=path.replaceAll('\\','/'),file=String(item?.file||'').replaceAll('\\','/');
+   return Boolean(file)&&(current===file||current.endsWith('/'+file));
+  }
+  function scanRoutineRanges(model){
+   const source=model.getValue(),lines=model.getLinesContent(),offsets=[];
+   let offset=0;lines.forEach(line=>{offsets.push(offset);offset+=line.length+1;});
+   // Keep line/column offsets while excluding braces and indentation in literals.
+   const literals=currentLanguage==='python'?/#.*$|'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/gm:
+    /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|\/(?![/*])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\n\\])+\/[a-z]*/g;
+   const masked=source.replace(literals,token=>{
+    const blank=token.replace(/[^\n]/g,' ');
+    return currentLanguage==='python'&&!token.startsWith('#')?'x'+blank.slice(1):blank;
+   }).split('\n');
+   const result=[];
+   lines.forEach((line,index)=>{
+    if(!/^\s*(?:(?:export\s+)?(?:async\s+)?(?:def|function|子程序)\s+|\.子程序\s+)/u.test(masked[index]))return;
+    const match=line.match(/^\s*(?:export\s+)?(?:async\s+)?(?:def|function|子程序)\s+([^\s(]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?/u);
+    const zhxb=currentLanguage==='zhxb'&&line.match(/^\s*\.子程序\s+([\p{L}_][\p{L}\p{N}_]*)(?:\s*\(([^)]*)\))?/u);
+    if(!match&&!zhxb)return;
+    const item={sourceName:(match||zhxb)[1],rawParams:(match||zhxb)[2]||'',sourceReturn:(match?.[3]||'').trim(),line:index+1,headerEndLine:index+1,endLine:lines.length,bodyLine:index+2,bodyColumn:1,inlineBody:false};
+    if(currentLanguage==='python'){
+     const indent=text=>text.match(/^\s*/)[0].replaceAll('\t','    ').length;
+     let depth=0,colon=-1,header=index;
+     for(;header<lines.length;header++){
+      const text=masked[header];
+      for(let col=0;col<text.length;col++){
+       if('([{'.includes(text[col]))depth++;else if(')]}'.includes(text[col]))depth--;
+       else if(text[col]===':'&&depth===0){colon=col;break;}
+      }
+      if(colon>=0)break;
+     }
+     if(header>=lines.length)return;
+     item.headerEndLine=header+1;
+     item.inlineBody=Boolean(lines[header].slice(colon+1).trim());
+     if(item.inlineBody){item.endLine=header+1;item.bodyLine=header+1;item.bodyColumn=colon+2+lines[header].slice(colon+1).match(/^\s*/)[0].length;}
+     else{
+      depth=0;
+      for(let row=header+1;row<lines.length;row++){
+       const text=masked[row];
+       if(text.trim()&&depth<=0&&indent(text)<=indent(masked[index])){item.endLine=row;break;}
+       for(const char of text){if('([{'.includes(char))depth++;else if(')]}'.includes(char))depth--;}
+      }
+      item.bodyLine=Math.min(header+2,lines.length);
+      for(let row=header+1;row<item.endLine;row++)if(masked[row].trim()){item.bodyLine=row+1;break;}
+      item.bodyColumn=lines[item.bodyLine-1].match(/^\s*/)[0].length+1;
+     }
+    }else if(['javascript','typescript'].includes(currentLanguage)){
+     const code=masked.join('\n');let opening=code.indexOf('(',offsets[index]),depth=0;
+     for(;opening<code.length;opening++){if(code[opening]==='(')depth++;else if(code[opening]===')'&&--depth===0){opening++;break;}}
+     opening=code.indexOf('{',opening);if(opening<0)return;
+     let closing=code.length-1;depth=0;
+     for(let pos=opening;pos<code.length;pos++){if(code[pos]==='{')depth++;else if(code[pos]==='}'&&--depth===0){closing=pos;break;}}
+     item.headerEndLine=model.getPositionAt(opening).lineNumber;item.endLine=model.getPositionAt(closing).lineNumber;
+     let body=opening+1;while(body<closing&&/\s/.test(source[body]))body++;
+     const position=model.getPositionAt(body);item.bodyLine=position.lineNumber;item.bodyColumn=position.column;
+     item.inlineBody=item.bodyLine===item.headerEndLine;
+     item.endHasFollowingCode=Boolean(source.slice(closing+1,offsets[item.endLine]??source.length).trim().replace(/^;/,''));
+    }
+    result.push(item);
+   });
+   if(currentLanguage==='zhxb')result.forEach((item,index)=>{item.endLine=result[index+1]?.line-1||lines.length;});
+   return result.filter(item=>!result.some(parent=>parent!==item&&parent.line<item.line&&item.line<=parent.endLine));
+  }
+  let hiddenSignature='',sourceFullyHidden=false,currentRoutineKey='';
+  function disposeRoutine(record,accessor){record.observer?.disconnect();record.disposed=true;accessor.removeZone(record.id);}
   function renderRoutines(){
    const model=editor.getModel();if(!model)return;
-   const rendered=[];
-   editor.changeViewZones(accessor=>{zones.forEach(id=>accessor.removeZone(id));zones=[];
-    if(!['python','javascript','typescript','zhxb'].includes(currentLanguage))return;
-    const lines=model.getLinesContent();
-    const routines=[];
-    lines.forEach((line,index)=>{
-     const match=line.match(/^\s*(?:def|function|子程序)\s+([^\s(]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?/u);
-     const zhxb=currentLanguage==='zhxb'&&line.match(/^\s*\.子程序\s+([^\s(]+)(?:\s*\(([^)]*)\))?/u);
-     if(match)routines.push({index,name:match[1],params:match[2]||'',returnType:(match[3]||'').trim(),locked:false,line});
-     else if(zhxb)routines.push({index,name:zhxb[1],params:zhxb[2]||'',returnType:'',locked:false,line});
-    });
-    routines.forEach(({index,name:sourceName,params:rawParams,returnType:sourceReturn,line})=>{
+   const previous=new Map(routineLayouts.map(record=>[record.key,record])),next=[];
+   editor.changeViewZones(accessor=>{
+    const routines=['python','javascript','typescript','zhxb'].includes(currentLanguage)?scanRoutineRanges(model):[];
+    const identities=new Map();
+    routines.forEach(routine=>{
+     const {sourceName,rawParams,sourceReturn}=routine,index=routine.line-1;
+     const ordinal=identities.get(sourceName)||0;identities.set(sourceName,ordinal+1);
+     const routineKey=path+':'+sourceName+':'+ordinal;
+     const startup=startupRoutines.includes(sourceName),transient=routineInfo[path+':'+(index+1)];
+     const stored=(transient?.sourceName===sourceName?transient:null)||Object.values(routineInfo).find(item=>item&&item.sourceName===sourceName&&metadataMatchesFile(item))||{};
+     const metadata={name:String(stored.name||(startup?'_启动程序':sourceName)),returnType:String(stored.returnType||sourceReturn||''),public:Boolean(stored.public),remark:String(stored.remark||''),locals:Array.isArray(stored.locals)?stored.locals.map(item=>({name:String(item.name||''),type:String(item.type||'文本型'),defaultValue:String(item.defaultValue??item.default??''),remark:String(item.remark||'')})):[]};
+     const signature=JSON.stringify([rawParams,metadata,customTypes,startup,stored.parameterInfo,stored.declaredLocals]);
+     let record=previous.get(routineKey);previous.delete(routineKey);
+     if(record&&record.signature===signature){
+      record.routine=routine;record.stored=stored;
+      if(record.zone.afterLineNumber!==routine.headerEndLine){record.zone.afterLineNumber=routine.headerEndLine;accessor.layoutZone(record.id);}
+      record.lineNumber.textContent=String(routine.line);record.lineNumber.title='源码行 '+routine.line;next.push(record);return;
+     }
+     if(record)disposeRoutine(record,accessor);
      const node=document.createElement('div');node.className='routine-zone';
-     const startup=startupRoutines.includes(sourceName);
-     const displayName=startup?String(routineInfo[path+':'+(index+1)]?.name||'_启动程序'):sourceName;
-     const routineKey=path+':'+index+':'+sourceName,bar=document.createElement('div'),toggle=document.createElement('button'),caption=document.createElement('span'),lineNumber=document.createElement('span');
-     lineNumber.className='routine-line-number';lineNumber.textContent=String(index+1);lineNumber.title='源码行 '+(index+1);node.appendChild(lineNumber);
-     bar.className='routine-bar';toggle.className='routine-toggle';toggle.type='button';caption.textContent='子程序 '+displayName;bar.append(toggle,caption);node.appendChild(bar);
-     const content=document.createElement('div');content.className='routine-content';node.appendChild(content);
-     const collapsed=Boolean(routineCollapsed[routineKey]);
-     toggle.textContent=collapsed?'▸':'▾';content.hidden=collapsed;
-     toggle.onclick=event=>{event.preventDefault();event.stopPropagation();routineCollapsed[routineKey]=!routineCollapsed[routineKey];renderRoutines();};
-     bar.onclick=event=>{if(event.target!==toggle)toggle.click();};
-     const stored=routineInfo[path+':'+(index+1)]||Object.values(routineInfo).find(item=>item&&item.file&&path.replaceAll('\\','/').endsWith(item.file)&&item.line===index+1)||{};
-     const metadata={name:String(stored.name||displayName),returnType:String(stored.returnType||sourceReturn||''),public:Boolean(stored.public),remark:String(stored.remark||''),locals:Array.isArray(stored.locals)?stored.locals.map(item=>({name:String(item.name||''),type:String(item.type||'文本型'),defaultValue:String(item.defaultValue??item.default??''),remark:String(item.remark||'')})):[]};
-     const publish=()=>{const value={line:index+1,name:metadata.name,sourceName,returnType:metadata.returnType,public:metadata.public,remark:metadata.remark,locals:metadata.locals,startup};routineInfo[path+':'+(index+1)]={...value};bridge.routineMetadata(path,JSON.stringify(value));};
-     const table=document.createElement('table'),head=table.insertRow();
+     // Keep native input focus and selection; Monaco must not consume these clicks.
+     node.addEventListener('mousedown',event=>event.stopPropagation());
+     node.addEventListener('pointerdown',event=>event.stopPropagation());
+     const frame=document.createElement('div');frame.className='routine-frame';node.appendChild(frame);
+     const publish=()=>{
+      const value={...record.stored,file:record.stored.file||path,line:record.routine.line,name:metadata.name,sourceName,returnType:metadata.returnType,public:metadata.public,remark:metadata.remark,locals:metadata.locals.map(item=>({...item})),startup};
+      Object.keys(routineInfo).forEach(key=>{const item=routineInfo[key];if(item?.sourceName===sourceName&&metadataMatchesFile(item))delete routineInfo[key];});
+      routineInfo[path+':'+record.routine.line]=value;record.signature=JSON.stringify([rawParams,metadata,customTypes,startup,stored.parameterInfo,stored.declaredLocals]);bridge.routineMetadata(path,JSON.stringify(value));
+     };
+     const table=document.createElement('table');table.className='routine-signature';
+     const columns=(target,widths)=>{const group=document.createElement('colgroup');widths.forEach(width=>{const col=document.createElement('col');col.style.width=width+'%';group.appendChild(col);});target.appendChild(group);};
+     columns(table,[32,24,8,36]);
+     const head=table.createTHead().insertRow();head.className='routine-head';
      ['子程序名','返回值类型','公开','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;head.appendChild(th);});
-     const row=table.insertRow(),name=document.createElement('input');name.className='routine-name';name.value=metadata.name;name.title=startup?'启动子程序标题，可编辑；实际启动事件仍绑定当前窗口加载处理器':'子程序名称';row.insertCell().appendChild(name);
-     name.onchange=()=>{if(!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name.value)){name.value=metadata.name;return;}
-      metadata.name=name.value;caption.textContent='子程序 '+metadata.name;if(!startup){const offset=line.indexOf(sourceName);editor.executeEdits('routine-name',[{range:new monaco.Range(index+1,offset+1,index+1,offset+1+sourceName.length),text:name.value}]);}publish();};
-     const returnCell=document.createElement('select');returnCell.className='routine-return';[['无返回值',''],['文本型','文本型'],['数值型','数值型'],['整数型','整数型'],['长整数型','长整数型'],['小数型','小数型'],['双精度小数型','双精度小数型'],['逻辑型(布尔型)','逻辑型(布尔型)'],['字节型','字节型'],['日期时间型','日期时间型'],['字节集','字节集'],['对象型','对象型'],['数组型','数组型'],['自定义类型','自定义类型']].forEach(([label,value])=>returnCell.add(new Option(label,value)));returnCell.value=metadata.returnType;returnCell.onchange=()=>{metadata.returnType=returnCell.value;publish();};row.insertCell().appendChild(returnCell);
-     const publicCell=document.createElement('input');publicCell.type='checkbox';publicCell.className='routine-public';publicCell.title='选择公开；双击也可切换';publicCell.checked=metadata.public;publicCell.classList.toggle('enabled',metadata.public);publicCell.onchange=()=>{metadata.public=publicCell.checked;publicCell.classList.toggle('enabled',metadata.public);publish();};publicCell.ondblclick=event=>{event.preventDefault();event.stopPropagation();publicCell.checked=!publicCell.checked;publicCell.dispatchEvent(new Event('change',{bubbles:true}));};row.insertCell().appendChild(publicCell);
-     const remark=document.createElement('input');remark.className='routine-remark';remark.value=metadata.remark;remark.placeholder='备注';remark.title='备注（注释）';remark.oninput=()=>{metadata.remark=remark.value;publish();};remark.onchange=remark.oninput;remark.onblur=remark.oninput;row.insertCell().appendChild(remark);content.appendChild(table);
-     const params=rawParams.split(',').map(value=>value.trim()).filter(Boolean);
-     if(params.length){const pt=document.createElement('table'),ph=pt.insertRow();['参数名','类型','默认值','备注'].forEach(text=>{const th=document.createElement('th');th.textContent=text;ph.appendChild(th);});
-      params.forEach(param=>{const r=pt.insertRow(),parts=param.split('=');const names=parts[0].split(':');[names[0],names[1]||'自动',parts[1]||'', ''].forEach(text=>r.insertCell().textContent=text);});content.appendChild(pt);}
-     const localTable=document.createElement('table');localTable.className='routine-locals';const localHead=localTable.insertRow();['局部变量名','类型','默认值','备注','操作'].forEach(text=>{const th=document.createElement('th');th.textContent=text;localHead.appendChild(th);});
-     const variableTypes=[['文本型','文本型'],['数值型','数值型'],['整数型','整数型'],['长整数型','长整数型'],['双精度小数型','双精度小数型'],['逻辑型(布尔型)','逻辑型(布尔型)'],['字节型','字节型'],['日期时间型','日期时间型'],['对象型','对象型'],['数组型','数组型'],['自定义类型','自定义类型']];
-     const readLocals=()=>{metadata.locals=[...localTable.querySelectorAll('tbody tr')].map(tr=>({name:tr.querySelector('.routine-local-name')?.value.trim()||'',type:tr.querySelector('.routine-local-type')?.value||'文本型',defaultValue:tr.querySelector('.routine-local-default')?.value||'',remark:tr.querySelector('.routine-local-remark')?.value||''})).filter(item=>item.name);publish();};
-     const localBody=document.createElement('tbody');localTable.appendChild(localBody);
-     const renderLocals=()=>{localBody.textContent='';metadata.locals.forEach((item,localIndex)=>{const localRow=localBody.insertRow();const localName=document.createElement('input');localName.className='routine-local-name';localName.value=item.name;localName.placeholder='变量名';const localType=document.createElement('select');localType.className='routine-local-type';variableTypes.forEach(([label,value])=>localType.add(new Option(label,value)));localType.value=item.type;const localDefault=document.createElement('input');localDefault.className='routine-local-default';localDefault.value=item.defaultValue;const localRemark=document.createElement('input');localRemark.className='routine-local-remark';localRemark.value=item.remark;localRemark.placeholder='备注';[localName,localType,localDefault,localRemark].forEach((field,cellIndex)=>{localRow.insertCell().appendChild(field);field.addEventListener(field.tagName==='SELECT'?'change':'input',()=>{metadata.locals[localIndex]={name:localName.value.trim(),type:localType.value,defaultValue:localDefault.value,remark:localRemark.value};readLocals();});});const remove=document.createElement('button');remove.className='routine-remove-local';remove.type='button';remove.textContent='删除';remove.onclick=()=>{metadata.locals.splice(localIndex,1);renderLocals();publish();};localRow.insertCell().appendChild(remove);});};
-     renderLocals();content.appendChild(localTable);const addLocal=document.createElement('button');addLocal.className='routine-add-local';addLocal.type='button';addLocal.textContent='+ 添加局部变量';addLocal.onclick=()=>{metadata.locals.push({name:'',type:'文本型',defaultValue:'',remark:''});renderLocals();};content.appendChild(addLocal);
-      // A view zone belongs below the declaration it describes.  `index` is
-      // zero-based while Monaco's `afterLineNumber` is one-based; using the
-      // former put the metadata over the declaration and its first statement.
-      // Reserve a first-pass height until the browser has laid out the tables.
-      // Keep enough room for Windows font metrics before the first layout pass.
-      const height=collapsed?34:220+(40*params.length)+(40*metadata.locals.length);
-      const zone={afterLineNumber:index+1,heightInPx:height,domNode:node,suppressMouseDown:true};
-      const id=accessor.addZone(zone);zones.push(id);rendered.push({id,zone,node});
+     const row=table.createTBody().insertRow(),nameCell=document.createElement('div');nameCell.className='routine-name-cell';
+     const toggle=document.createElement('button');toggle.className='routine-toggle';toggle.type='button';nameCell.appendChild(toggle);
+     const name=document.createElement('input');name.className='routine-name';name.type='text';name.readOnly=false;name.disabled=false;name.value=metadata.name;
+     name.title=startup?'启动子程序标题；实际启动事件保持绑定':'子程序名称';name.setAttribute('aria-label',startup?'启动子程序标题':'子程序名称');nameCell.appendChild(name);row.insertCell().appendChild(nameCell);
+     name.onchange=()=>{if(name.value===metadata.name)return;if(!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name.value)){name.value=metadata.name;return;}metadata.name=name.value;publish();};name.onblur=name.onchange;
+     const returnCell=document.createElement('select');returnCell.className='routine-return';
+     const returnTypes=[['无返回值',''],['文本型','文本型'],['数值型','数值型'],['整数型','整数型'],['长整数型','长整数型'],['小数型','小数型'],['双精度小数型','双精度小数型'],['逻辑型(布尔型)','逻辑型(布尔型)'],['字节型','字节型'],['日期时间型','日期时间型'],['字节集','字节集'],['对象型','对象型'],['数组型','数组型'],['自定义类型','自定义类型']];
+     returnTypes.forEach(([label,value])=>returnCell.add(new Option(label,value)));customTypes.forEach(value=>returnCell.add(new Option(value,value)));
+     returnCell.value=metadata.returnType;returnCell.onchange=()=>{metadata.returnType=returnCell.value;publish();};row.insertCell().appendChild(returnCell);
+     const publicCell=document.createElement('input');publicCell.type='checkbox';publicCell.className='routine-public';publicCell.title='公开子程序';publicCell.checked=metadata.public;
+     const publicContainer=row.insertCell();publicContainer.className='routine-public-cell';publicContainer.appendChild(publicCell);
+     publicCell.onchange=()=>{metadata.public=publicCell.checked;publicCell.classList.toggle('enabled',metadata.public);publish();};publicCell.classList.toggle('enabled',metadata.public);
+     const remark=document.createElement('input');remark.className='routine-remark';remark.value=metadata.remark;remark.placeholder='备注（注释）';remark.title='备注（注释）';remark.oninput=()=>{metadata.remark=remark.value;publish();};remark.onchange=remark.oninput;row.insertCell().appendChild(remark);frame.appendChild(table);
+     const content=document.createElement('div');content.className='routine-content';frame.appendChild(content);
+     const parameterBar=document.createElement('div');parameterBar.className='routine-section';
+     const parameterTitle=document.createElement('span');parameterTitle.textContent='参数（由调用方传入）';
+     const editParameters=document.createElement('button');editParameters.className='routine-edit-params';editParameters.type='button';editParameters.textContent='编辑参数';editParameters.onclick=()=>bridge.editParameters(path,record.routine.line);parameterBar.append(parameterTitle,editParameters);content.appendChild(parameterBar);
+     const params=Array.isArray(stored.parameterInfo)?stored.parameterInfo:rawParams.split(',').map(value=>value.trim()).filter(Boolean).map(param=>{const parts=param.split('='),names=parts[0].split(':');return {name:names[0],type:names[1]||'自动',default:parts.slice(1).join('='),optional:parts.length>1,remark:''};});
+     if(params.length){
+      const pt=document.createElement('table');pt.className='routine-params';columns(pt,[32,24,14,30]);const ph=pt.createTHead().insertRow();
+      ['参数名','类型','默认值','可省略'].forEach(text=>{const th=document.createElement('th');th.textContent=text;ph.appendChild(th);});
+      const pb=pt.createTBody();params.forEach(param=>{const r=pb.insertRow();[param.name,param.type||'自动',param.default||'',param.optional?'是':'否'].forEach(text=>r.insertCell().textContent=text);});content.appendChild(pt);
+     }
+     const localSection=document.createElement('div');localSection.className='routine-section';
+     const localLabel=document.createElement('span');localLabel.textContent='局部变量（子程序内部初始化）';
+     const localCount=document.createElement('span');localCount.className='routine-count';
+     const addLocal=document.createElement('button');addLocal.className='routine-add-local';addLocal.type='button';addLocal.textContent='+ 添加';addLocal.title='添加局部变量';localSection.append(localLabel,localCount,addLocal);content.appendChild(localSection);
+     const localTable=document.createElement('table');localTable.className='routine-locals';columns(localTable,[32,24,14,24,6]);const localHead=localTable.createTHead().insertRow();
+     ['局部变量名','类型','初始值','备注',''].forEach(text=>{const th=document.createElement('th');th.textContent=text;localHead.appendChild(th);});const localBody=localTable.createTBody();content.appendChild(localTable);
+     const variableTypes=returnTypes.slice(1);customTypes.forEach(value=>variableTypes.push([value,value]));
+     if(Array.isArray(stored.declaredLocals)&&stored.declaredLocals.length){const declared=document.createElement('table');declared.className='routine-declared-locals';const head=declared.createTHead().insertRow();['源码局部变量','类型','初始值','备注'].forEach(value=>{head.insertCell().textContent=value;});const body=declared.createTBody();stored.declaredLocals.forEach(item=>{const row=body.insertRow();[item.name,item.type,item.default||'',item.remark||''].forEach(value=>{row.insertCell().textContent=value;});});content.appendChild(declared);}
+     const readLocals=()=>{metadata.locals=[...localBody.rows].map(tr=>({name:tr.querySelector('.routine-local-name').value.trim(),type:tr.querySelector('.routine-local-type').value,defaultValue:tr.querySelector('.routine-local-default').value,remark:tr.querySelector('.routine-local-remark').value}));publish();};
+     const renderLocals=()=>{
+      localBody.textContent='';localTable.hidden=metadata.locals.length===0;localCount.textContent=metadata.locals.length?String(metadata.locals.length)+' 项':'无';
+      metadata.locals.forEach((item,localIndex)=>{
+       const localRow=localBody.insertRow(),localName=document.createElement('input');localName.className='routine-local-name';localName.value=item.name;localName.placeholder='变量名';
+       const localType=document.createElement('select');localType.className='routine-local-type';variableTypes.forEach(([label,value])=>localType.add(new Option(label,value)));localType.value=item.type;
+       const localDefault=document.createElement('input');localDefault.className='routine-local-default';localDefault.value=item.defaultValue;
+       const localRemark=document.createElement('input');localRemark.className='routine-local-remark';localRemark.value=item.remark;localRemark.placeholder='备注';
+       [localName,localType,localDefault,localRemark].forEach(field=>{localRow.insertCell().appendChild(field);field.addEventListener(field.tagName==='SELECT'?'change':'input',readLocals);});
+       const remove=document.createElement('button');remove.className='routine-remove-local';remove.type='button';remove.textContent='×';remove.title='删除局部变量';remove.setAttribute('aria-label','删除局部变量');
+       remove.onclick=()=>{metadata.locals.splice(localIndex,1);renderLocals();publish();};localRow.insertCell().appendChild(remove);
+      });
+     };renderLocals();
+     addLocal.onclick=()=>{metadata.locals.push({name:'',type:'文本型',defaultValue:'',remark:''});renderLocals();localBody.lastElementChild.querySelector('input').focus();};
+     const gutter=document.createElement('div');gutter.className='routine-gutter';const lineNumber=document.createElement('span');lineNumber.className='routine-line-number';lineNumber.textContent=String(index+1);lineNumber.title='源码行 '+(index+1);gutter.appendChild(lineNumber);
+     const updateGutter=()=>{const info=editor.getLayoutInfo();lineNumber.style.left=info.lineNumbersLeft+'px';lineNumber.style.width=info.lineNumbersWidth+'px';lineNumber.style.top=routineCollapsed[routineKey]?'4px':'28px';};
+     const applyCollapse=()=>{const collapsed=Boolean(routineCollapsed[routineKey]);node.classList.toggle('collapsed',collapsed);content.hidden=collapsed;toggle.textContent=collapsed?'▸':'▾';toggle.title=collapsed?'展开子程序和代码':'收缩子程序和代码';toggle.setAttribute('aria-expanded',String(!collapsed));updateGutter();};
+     toggle.onclick=event=>{event.preventDefault();event.stopPropagation();currentRoutineKey=routineKey;routineCollapsed[routineKey]=!routineCollapsed[routineKey];applyCollapse();record.measureNow();syncHiddenSourceLines();};applyCollapse();
+     const zone={afterLineNumber:index+1,heightInPx:55,domNode:node,marginDomNode:gutter,suppressMouseDown:false,showInHiddenAreas:true};zone.afterLineNumber=routine.headerEndLine;
+     record={id:accessor.addZone(zone),key:routineKey,routine,stored,signature,zone,node,frame,gutter,lineNumber,updateGutter,applyCollapse,disposed:false};next.push(record);
+     let queued=false;
+     record.measureNow=()=>{if(record.disposed||!node.isConnected)return;updateGutter();const height=frame.getBoundingClientRect().height;if(height<=0)return;const actual=Math.ceil(height)+5;if(actual!==zone.heightInPx){zone.heightInPx=actual;editor.changeViewZones(live=>live.layoutZone(record.id));}};
+     const measure=()=>{if(queued||record.disposed)return;queued=true;requestAnimationFrame(()=>{queued=false;record.measureNow();});};
+     record.observer=new ResizeObserver(measure);record.observer.observe(frame);measure();
     });
+    previous.forEach(record=>disposeRoutine(record,accessor));
    });
+   routineLayouts=next;zones=next.map(record=>record.id);routineLayouts.forEach(record=>record.measureNow());
    syncHiddenSourceLines();
-   // Font metrics and Windows display scaling can make a fixed row estimate
-   // too small.  Measure the laid-out last table and grow only live zones.
-   requestAnimationFrame(()=>{
-    editor.changeViewZones(accessor=>{
-     rendered.forEach(({id,zone,node})=>{
-      if(!zones.includes(id)||!node.isConnected||!node.lastElementChild)return;
-      const last=node.lastElementChild,style=getComputedStyle(last);
-      const bottom=parseFloat(getComputedStyle(node).paddingBottom)||0;
-      const margin=parseFloat(style.marginBottom)||0;
-      const actual=Math.ceil(last.getBoundingClientRect().bottom-node.getBoundingClientRect().top+bottom+margin+2);
-      if(actual>zone.heightInPx){zone.heightInPx=actual;accessor.layoutZone(id);}
-     });
-    });
-   });
   }
   function syncHiddenSourceLines(){
+   // Folding changes visibility, never the document's editing permission.
+   // Restore this even when the hidden-range layout has not changed.
+   editor.updateOptions({readOnly:false});
    if(!editor.setHiddenAreas)return;
    const model=editor.getModel();if(!model){editor.setHiddenAreas([]);return;}
-   if(!chinese){hiddenLineNumbers=new Set();editor.setHiddenAreas([]);editor.updateOptions({lineNumbers:lineNumber=>String(lineNumber)});return;}
    const hidden=[];
-   model.getLinesContent().forEach((line,index)=>{
+   if(chinese)model.getLinesContent().forEach((line,index)=>{
     const trimmed=line.trim();
     const importLine=/^(?:(?:from|import)\b|const\s+\w+\s*=\s*require|从(?:\s|$)|导入(?:\s|$))/u.test(trimmed);
-    const routineLine=/^(?:(?:def|function|子程序)\s+[^\s(]+\s*\(|\.子程序\s+[\p{L}_\p{N}\u4e00-\u9fff]+)/u.test(trimmed);
     const startupLine=/^(?:if|如果)\s+__name__\s*==\s*['"]__main__['"]\s*:/u.test(trimmed);
-    if(importLine||routineLine||startupLine)hidden.push(new monaco.Range(index+1,1,index+1,1));
+    if(importLine||startupLine||currentLanguage==='zhxb'&&/^\.(?:参数|局部变量)\s/u.test(trimmed))hidden.push([index+1,index+1]);
    });
-   hiddenLineNumbers=new Set(hidden.map(range=>range.startLineNumber));
+   routineLayouts.forEach(record=>{
+    const r=record.routine,collapsed=Boolean(routineCollapsed[record.key]);
+    if(chinese&&!r.inlineBody)hidden.push([r.line,r.headerEndLine]);
+    if(collapsed){const start=chinese?r.line:r.headerEndLine+1,end=r.endLine-(r.endHasFollowingCode?1:0);if(start<=end)hidden.push([start,end]);}
+   });
+   // Module initialization has no function declaration of its own. In the
+   // Chinese procedure view it belongs to the explicitly bound startup row.
+   // Include its executable lines and separators when that row is collapsed.
+   const startupOwner=routineLayouts.find(record=>startupRoutines.includes(record.routine.sourceName));
+   if(chinese&&startupOwner&&routineCollapsed[startupOwner.key]){
+    const spans=routineLayouts.map(record=>record.routine).sort((a,b)=>a.line-b.line);
+    let start=1;
+    spans.forEach(routine=>{if(start<routine.line)hidden.push([start,routine.line-1]);start=Math.max(start,routine.endLine+1);});
+    if(start<=model.getLineCount())hidden.push([start,model.getLineCount()]);
+   }
+   hidden.sort((a,b)=>a[0]-b[0]);const merged=[];
+   hidden.forEach(range=>{const last=merged[merged.length-1];if(last&&range[0]<=last[1]+1)last[1]=Math.max(last[1],range[1]);else merged.push([...range]);});
+   const fullyHidden=merged.length===1&&merged[0][0]===1&&merged[0][1]>=model.getLineCount();
+   sourceFullyHidden=fullyHidden;
+   const signature=path+':'+JSON.stringify(merged);if(signature===hiddenSignature)return;hiddenSignature=signature;
+   hiddenLineNumbers=new Set();merged.forEach(([start,end])=>{for(let line=start;line<=end;line++)hiddenLineNumbers.add(line);});
+   // Monaco rejects hiding every model line. Keep the final line as a layout
+   // anchor below the procedure rows, with its source and cursor invisible.
+   // A source input request expands its procedure before modifying that line.
+   document.getElementById('editor').classList.toggle('source-fully-hidden',fullyHidden);
    editor.updateOptions({lineNumbers:lineNumber=>hiddenLineNumbers.has(lineNumber)?'':String(lineNumber)});
-   editor.setHiddenAreas(hidden);
+   if(fullyHidden){merged[0][1]=model.getLineCount()-1;if(merged[0][1]<1)merged.length=0;}
+   editor.setHiddenAreas(merged.map(([start,end])=>new monaco.Range(start,1,end,1)));
   }
+  function ensureSourceEditable(){
+   if(!sourceFullyHidden)return;
+   const target=routineLayouts.find(record=>record.key===currentRoutineKey)||routineLayouts.find(record=>record.routine.line<=editor.getPosition().lineNumber&&editor.getPosition().lineNumber<=record.routine.endLine)||routineLayouts[0];
+   if(!target)return;
+   routineCollapsed[target.key]=false;target.applyCollapse();target.measureNow();
+   gotoSource(target.routine.line,true);
+  }
+  dropHost.addEventListener('keydown',event=>{
+   if(!event.target.classList.contains('inputarea'))return;
+   const text=event.key.length===1&&!event.ctrlKey&&!event.metaKey&&!event.altKey;
+   const edit=['Enter','Backspace','Delete','Tab'].includes(event.key)||(event.ctrlKey||event.metaKey)&&['v','x'].includes(event.key.toLowerCase());
+   if(text||edit)ensureSourceEditable();
+  },true);
+  dropHost.addEventListener('beforeinput',event=>{
+   if(event.target.classList.contains('inputarea')&&/^(insert|delete)/.test(event.inputType||''))ensureSourceEditable();
+  },true);
   const providers=[];
   function configureCompletions(items){
    completionItems=Array.isArray(items)?items:[];
@@ -151,13 +316,16 @@ require(['vs/editor/editor.main'],()=>{
   function completionProvider(){return {triggerCharacters:['.',':','。'],provideCompletionItems(model,position){
    const word=model.getWordUntilPosition(position),range={startLineNumber:position.lineNumber,startColumn:word.startColumn,
     endLineNumber:position.lineNumber,endColumn:word.endColumn};
-   const suggestions=completionItems.map(item=>({label:item.label,kind:kindMap[item.kind]||kindMap.variable,
+   const localMetadata=Object.values(routineInfo).filter(item=>item&&metadataMatchesFile(item)&&item.line<=position.lineNumber).sort((a,b)=>b.line-a.line)[0];
+   const nextDeclaration=model.getLinesContent().slice(localMetadata?.line||0,position.lineNumber-1).some(line=>/^\s*(?:def |function |\.子程序 )/u.test(line));
+   const scoped=localMetadata&&!nextDeclaration?[...(localMetadata.locals||[]).map(item=>({label:item.name,kind:'variable',detail:'局部变量 · '+item.type,documentation:item.remark})),...(localMetadata.parameterInfo||[]).map(item=>({label:item.name,kind:'variable',detail:'参数 · '+(item.type||'自动'),documentation:item.remark})),...(localMetadata.declaredLocals||[]).map(item=>({label:item.name,kind:'variable',detail:'源码局部变量 · '+item.type,documentation:item.remark}))]:[];
+   const suggestions=[...completionItems,...scoped].map(item=>({label:item.label,kind:kindMap[item.kind]||kindMap.variable,
     insertText:item.insertText||item.label,insertTextRules:item.insertText&&item.insertText.indexOf('${')>=0?
     monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet:undefined,detail:item.detail||'项目符号',
     documentation:item.documentation||'',range}));
    return {suggestions};
   }};}
-  ['python','javascript','typescript','json','csharp','cpp','plaintext','zhxb'].forEach(language=>
+  ['python','javascript','typescript','json','csharp','cpp','html','css','xml','markdown','gdscript','plaintext','zhxb'].forEach(language=>
    providers.push(monaco.languages.registerCompletionItemProvider(language,completionProvider())));
   monaco.languages.registerSignatureHelpProvider(['python','javascript','typescript'],{
    signatureHelpTriggerCharacters:['(', ','],signatureHelpRetriggerCharacters:[','],
@@ -171,28 +339,50 @@ require(['vs/editor/editor.main'],()=>{
    }
   });
   let currentLanguage='python';
+  function gotoSource(line,routineBody=false){
+   const model=editor.getModel();if(!model)return;
+   line=Math.max(1,Math.min(model.getLineCount(),line));let column=1;
+   const target=routineLayouts.find(record=>record.routine.line===line);
+   if(routineBody&&target){line=target.routine.bodyLine;column=target.routine.bodyColumn;}
+   const initialization=chinese&&!routineLayouts.some(record=>record.routine.line<=line&&line<=record.routine.endLine);
+   routineLayouts.forEach(record=>{if(((record.routine.line<=line&&line<=record.routine.endLine)||(initialization&&startupRoutines.includes(record.routine.sourceName)))&&routineCollapsed[record.key]){routineCollapsed[record.key]=false;record.applyCollapse();record.measureNow();}});
+   syncHiddenSourceLines();editor.setPosition({lineNumber:line,column});editor.revealPositionInCenter({lineNumber:line,column},monaco.editor.ScrollType.Immediate);editor.focus();
+  }
   window.pcide={
-   open(data){loading=true;path=data.path;currentLanguage=data.language||'plaintext';chinese=Boolean(data.chinese);words=data.words||{};routineInfo=data.routines||{};startupRoutines=Array.isArray(data.startupRoutines)?data.startupRoutines:[];configureCompletions(data.completions);let model=models.get(path);
+   open(data){const switched=path!==data.path||!editor.getModel();loading=true;path=data.path;currentLanguage=data.language||'plaintext';chinese=Boolean(data.chinese)&&['python','javascript','typescript','zhxb'].includes(currentLanguage);words=data.words||{};routineInfo=data.routines||{};customTypes=Array.isArray(data.customTypes)?data.customTypes:[];startupRoutines=Array.isArray(data.startupRoutines)?data.startupRoutines:[];configureCompletions(data.completions);let model=models.get(path);
     const display=chinese?projectText(data.text):data.text;
     if(!model){model=monaco.editor.createModel(display,data.language,monaco.Uri.file(path));models.set(path,model);}else if(model.getValue()!==display)model.setValue(display);
-    editor.setModel(model);monaco.editor.setModelLanguage(model,currentLanguage);renderRoutines();loading=false;editor.focus();},
+    if(switched){hiddenSignature='';editor.setModel(model);}monaco.editor.setModelLanguage(model,currentLanguage);renderRoutines();loading=false;if(switched)editor.focus();},
    setCompletions(items){configureCompletions(items);},
-   snapshot(){return {path,text:chinese?projectText(editor.getValue(),true):editor.getValue(),displayText:editor.getValue(),routineBlocks:zones.length,models:models.size,position:editor.getPosition(),hiddenApi:typeof editor.setHiddenAreas};},
-   goto(line){editor.revealLineInCenter(line);editor.setPosition({lineNumber:line,column:1});editor.focus();},
+   snapshot(){return {path,text:chinese?projectText(editor.getValue(),true):editor.getValue(),displayText:editor.getValue(),routineBlocks:zones.length,models:models.size,position:editor.getPosition(),selectedText:editor.getModel()?.getValueInRange(editor.getSelection())||'',readOnly:editor.getOption(monaco.editor.EditorOption.readOnly),textFocus:editor.hasTextFocus(),hiddenLines:[...hiddenLineNumbers],routines:routineLayouts.map(record=>({...record.routine,collapsed:Boolean(routineCollapsed[record.key])})),hiddenApi:typeof editor.setHiddenAreas};},
+   focus(){editor.focus();},
+   goto(line){gotoSource(line);},
+   gotoRoutine(line){gotoSource(line,true);},
    setValue(text){editor.setValue(chinese?projectText(text):text);},
-   insertText(text){editor.executeEdits('pcide',[{range:editor.getSelection(),text:chinese?projectText(text):text,forceMoveMarkers:true}]);editor.focus();},
+   insertText(text){ensureSourceEditable();editor.executeEdits('pcide',[{range:editor.getSelection(),text:chinese?projectText(text):text,forceMoveMarkers:true}]);editor.focus();},
    triggerSuggest(){editor.trigger('pcide','editor.action.triggerSuggest',{});},
-   toggleFold(){editor.trigger('pcide','editor.action.toggleFold',{});},
+   toggleFold(){const line=editor.getPosition()?.lineNumber||1,target=routineLayouts.find(record=>record.routine.line<=line&&line<=record.routine.endLine)||routineLayouts[0];if(target){routineCollapsed[target.key]=!routineCollapsed[target.key];target.applyCollapse();target.measureNow();syncHiddenSourceLines();}},
+   foldAll(collapsed){routineLayouts.forEach(record=>{routineCollapsed[record.key]=Boolean(collapsed);record.applyCollapse();record.measureNow();});syncHiddenSourceLines();},
+   addLocal(){const line=editor.getPosition()?.lineNumber||1,target=routineLayouts.find(record=>record.routine.line<=line&&line<=record.routine.endLine)||routineLayouts[0];if(target){routineCollapsed[target.key]=false;target.applyCollapse();target.node.querySelector('.routine-add-local')?.click();target.measureNow();syncHiddenSourceLines();}},
+   editCurrentParameters(){const line=editor.getPosition()?.lineNumber||1,target=routineLayouts.find(record=>record.routine.line<=line&&line<=record.routine.endLine)||routineLayouts[0];if(target)bridge.editParameters(path,target.routine.line);},
+   toggleComment(){if(currentLanguage!=='zhxb'){editor.getAction('editor.action.commentLine')?.run();return;}const model=editor.getModel(),selection=editor.getSelection(),end=selection.endColumn===1&&selection.endLineNumber>selection.startLineNumber?selection.endLineNumber-1:selection.endLineNumber,lines=[];for(let line=selection.startLineNumber;line<=end;line++){const text=model.getLineContent(line);if(text.trim())lines.push({line,text,indent:text.length-text.trimStart().length});}const remove=lines.every(item=>item.text.slice(item.indent).startsWith('//'));editor.executeEdits('comment',lines.map(item=>({range:new monaco.Range(item.line,item.indent+1,item.line,item.indent+1+(remove?(item.text.slice(item.indent+2).startsWith(' ')?3:2):0)),text:remove?'':'// '})));},
    find(replace){editor.getAction(replace?'editor.action.startFindReplaceAction':'actions.find')?.run();},
-   undo(){editor.trigger('pcide','undo',{});},
-   redo(){editor.trigger('pcide','redo',{});},
+   undo(){if(document.activeElement?.closest('.routine-zone')&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName))document.execCommand('undo');else editor.trigger('pcide','undo',{});},
+   redo(){if(document.activeElement?.closest('.routine-zone')&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName))document.execCommand('redo');else editor.trigger('pcide','redo',{});},
    formatDocument(){editor.getAction('editor.action.formatDocument')?.run();},
    breakpoints(lines){decorations=editor.deltaDecorations(decorations,lines.map(line=>({range:new monaco.Range(line,1,line,1),options:{glyphMarginClassName:'pcide-breakpoint'}})));},
-   dispose(){editor.setModel(null);for(const m of models.values())m.dispose();models.clear();path='';}
+   closeDocument(closedPath){if(closedPath!==path){models.get(closedPath)?.dispose();models.delete(closedPath);}},
+   dispose(){routineLayouts.forEach(record=>{record.observer?.disconnect();record.disposed=true;});routineLayouts=[];editor.changeViewZones(accessor=>{zones.forEach(id=>accessor.removeZone(id));zones=[];});editor.setModel(null);for(const m of models.values())m.dispose();models.clear();path='';}
   };
   editor.onDidChangeModelContent(()=>{if(!loading&&path){bridge.textChanged(path,editor.getValue());renderRoutines();}});
   editor.onDidChangeCursorPosition(e=>{if(path)bridge.cursorChanged(path,e.position.lineNumber);});
-  editor.onMouseDown(e=>{if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN&&path)bridge.toggleBreakpoint(path,e.target.position.lineNumber);});
+  editor.onMouseDown(e=>{
+   if(e.target.type===monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN&&path)bridge.toggleBreakpoint(path,e.target.position.lineNumber);
+   if([monaco.editor.MouseTargetType.CONTENT_TEXT,monaco.editor.MouseTargetType.CONTENT_EMPTY].includes(e.target.type)){
+    const line=e.target.position?.lineNumber;currentRoutineKey=routineLayouts.find(record=>record.routine.line<=line&&line<=record.routine.endLine)?.key||currentRoutineKey;
+    ensureSourceEditable();editor.focus();bridge.focusEditor();
+   }
+  });
   bridge.editorReady();
  });
 },error=>{document.getElementById('editor').textContent='Monaco failed: '+error.message;});

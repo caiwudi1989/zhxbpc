@@ -80,6 +80,9 @@ def list_values(value):
 
 
 def validate_properties(kind, props):
+    if kind == "MenuBar" and "menu" in props:
+        from .menus import validate_menu
+        validate_menu(props["menu"])
     defaults = control_defaults(kind)
     for key, value in props.items():
         if key not in defaults:

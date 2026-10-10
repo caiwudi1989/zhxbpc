@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "name": "web_3",
+  "language": "html",
+  "entry": "src/index.html",
+  "modules": [],
+  "plugins": [],
+  "permissions": [],
+  "execution": {
+    "timeout_seconds": 120,
+    "max_output_lines": 5000
+  },
+  "development": {
+    "version": 1,
+    "template": "web-app",
+    "target": "web",
+    "configuration": "Release",
+    "jobs": 4,
+    "tools": {},
+    "engine_root": ""
+  },
+  "platform": {
+    "version": 1,
+    "capabilities": {
+      "database": {
+        "enabled": true,
+        "providers": [
+          "sqlite"
+        ]
+      },
+      "api": {
+        "enabled": true,
+        "protocols": [
+          "http",
+          "https",
+          "websocket"
+        ]
+      },
+      "script": {
+        "enabled": true,
+        "engines": [
+          "python",
+          "javascript",
+          "typescript",
+          "zhxb"
+        ]
+      },
+      "ai": {
+        "enabled": false,
+        "backends": [
+          "onnx",
+          "opencv"
+        ]
+      },
+      "game": {
+        "enabled": false,
+        "backends": [
+          "unity",
+          "opengl"
+        ]
+      },
+      "compiler": {
+        "enabled": true,
+        "modes": [
+          "development",
+          "standard",
+          "release"
+        ]
+      },
+      "agent": {
+        "enabled": false,
+        "roles": [
+          "architect",
+          "code",
+          "ui",
+          "database",
+          "test"
+        ]
+      },
+      "runtime": {
+        "enabled": true,
+        "profiles": [
+          "basic"
+        ]
+      }
+    },
+    "providers": []
+  }
+}

@@ -132,7 +132,12 @@ class Worker:
         callback = self.namespace.get(handler)
         if not callable(callback):
             raise ValueError(f"event handler not found: {handler}")
-        if self.request.get("debug"):
+        if self.project.manifest.get("language") == "zhxb":
+            if self.request.get("debug"):
+                self.debugger.runcall(callback, event=payload or {})
+            else:
+                callback(event=payload or {})
+        elif self.request.get("debug"):
             self.debugger.runcall(callback, payload or {})
         else:
             callback(payload or {})
@@ -141,20 +146,23 @@ class Worker:
         original_stdout, original_stderr = sys.stdout, sys.stderr
         sys.stdout = Output(self, "stdout")
         sys.stderr = Output(self, "stderr")
-        from .runtime_api import ui
+        from .runtime_api import ui, dll
         ui.transport = lambda message: self.send(message.pop("kind"), **message)
         sys.path.insert(0, str(self.project.root / "src"))
         sys.path.insert(0, str(self.project.root))
+        sources = None
         try:
+            from .project_sources import ProjectSources
+            sources = ProjectSources(self.project)
+            sources.prepare(self.namespace)
+            sys.meta_path.insert(0, sources)
             entry = self.project.entry_path
+            code = sources.code(entry)
+            relative_entry = entry.relative_to(self.project.root).as_posix()
+            sources.modules[relative_entry] = self.namespace
             if entry.suffix == ".pyc":
-                loader = importlib.machinery.SourcelessFileLoader("__main__", str(entry))
-                code = loader.get_code("__main__")
-            elif self.project.manifest.get("language") == "zhxb":
-                from .compiler import emit_python
-                code = compile(emit_python(entry.read_text(encoding="utf-8")), str(entry), "exec")
-            else:
-                code = compile(entry.read_text(encoding="utf-8"), str(entry), "exec")
+                sources.modules[str(Path(relative_entry).with_suffix(".py")).replace("\\", "/")] = self.namespace
+                sources.modules[str(Path(relative_entry).with_suffix(".zhxb")).replace("\\", "/")] = self.namespace
             if self.request.get("debug"):
                 self.debugger.run(code, self.namespace, self.namespace)
             else:
@@ -194,14 +202,25 @@ class Worker:
             return 1
         finally:
             self.cancel.set()
+            from .tasks import close_all
+            cleanup_error = None
+            try:
+                close_all()
+            except RuntimeError as exc:
+                cleanup_error = exc
             if self.reader:
                 self.reader.join(READER_JOIN_TIMEOUT)
             sys.stdout, sys.stderr = original_stdout, original_stderr
             sys.settrace(None)
             self.namespace.clear()
             ui.transport = None
+            dll.close()
+            if sources in sys.meta_path:
+                sys.meta_path.remove(sources)
             if self.reader and self.reader.is_alive():
                 raise RuntimeError("worker command reader did not exit")
+            if cleanup_error:
+                raise cleanup_error
 
 
 class Output:

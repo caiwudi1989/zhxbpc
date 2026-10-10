@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "form": {
+    "title": "MainForm",
+    "width": 760,
+    "height": 440,
+    "background": "#ffffff",
+    "events": {},
+    "window": {
+      "maximize": true,
+      "minimize": true,
+      "resizable": true,
+      "fixed_width": null,
+      "fixed_height": null,
+      "min_width": 100,
+      "min_height": 100,
+      "max_width": 10000,
+      "max_height": 10000,
+      "anchor": "center",
+      "dock": "none",
+      "auto_fill": false
+    }
+  },
+  "controls": [],
+  "grid": {
+    "enabled": true,
+    "size": 10,
+    "snap": true
+  }
+}

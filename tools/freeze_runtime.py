@@ -11,7 +11,8 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "src"))
 from pcide.core.paths import Paths, atomic_write_json, sha256_file
-from pcide.core.builder import runtime_fingerprint
+from pcide.core.builder import STANDARD_LIBRARY_IMPORTS, runtime_fingerprint
+from pcide.core.processes import run_bounded
 
 
 def freeze(paths, profile):
@@ -37,11 +38,14 @@ def freeze(paths, profile):
                        "--distpath", str(dist), "--workpath", str(cache / mode), "--specpath", str(spec)]
             for module in excludes:
                 command.extend(["--exclude-module", module])
+            for module in STANDARD_LIBRARY_IMPORTS:
+                command.extend(['--hidden-import', module])
             if profile == "vision":
                 command.extend(["--collect-data", "rapidocr_onnxruntime"])
             if profile == "node":
                 for source, destination in ((paths.runtime / "node/node.exe", "runtime/node"),
                     (paths.src / "pcide/core/worker_bytecode.cjs", "pcide/core"),
+                    (paths.src / "pcide/core/source_contract.cjs", "pcide/core"),
                     (root / "third_party/bytenode/index.cjs", "pcide/core")):
                     if source.name == "index.cjs":
                         loader = cache / "bytenode.cjs"
@@ -49,7 +53,7 @@ def freeze(paths, profile):
                         source = loader
                     command.extend(["--add-data", f"{source};{destination}"])
             command.append(str(paths.src / "pcide/runtime/launcher.py"))
-            subprocess.run(command, check=True, env=env, timeout=240)
+            run_bounded(command, cwd=root, environment=env, timeout=240, log_path=cache / ('freeze-' + mode + '.log'))
         material = stage / "PCIDE.Runtime"
         atomic_write_json(material / "runtime.json", {"fingerprint": runtime_fingerprint(paths, profile),
                           "python": sys.version, "cache_tag": sys.implementation.cache_tag, "profile": profile,

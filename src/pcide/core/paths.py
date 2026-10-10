@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-IDE_VERSION = "0.1.0"
+IDE_VERSION = "0.2.0"
 BUILD_BYTECODE_CACHE_LIMIT = 512 * 1024 * 1024
 
 

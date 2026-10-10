@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(PCIDEApp LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS src/*.cpp)
+add_executable(app ${APP_SOURCES})
+set_target_properties(app PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

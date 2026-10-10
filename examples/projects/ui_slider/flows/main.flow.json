@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "start",
+      "kind": "log",
+      "label": "开始",
+      "position": [
+        30,
+        30
+      ],
+      "config": {
+        "message": "流程已开始"
+      }
+    },
+    {
+      "id": "ocr",
+      "kind": "ocr.mock",
+      "label": "OCR",
+      "position": [
+        245,
+        30
+      ],
+      "config": {
+        "text": "demo"
+      }
+    },
+    {
+      "id": "yolo",
+      "kind": "yolo.mock",
+      "label": "YOLO",
+      "position": [
+        460,
+        30
+      ],
+      "config": {
+        "label": "button"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "start",
+      "ocr"
+    ],
+    [
+      "ocr",
+      "yolo"
+    ]
+  ]
+}

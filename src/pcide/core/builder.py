@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import py_compile
+import importlib.util
+import marshal
 import shutil
 import subprocess
 import sys
@@ -15,11 +17,28 @@ from .paths import BUILD_BYTECODE_CACHE_LIMIT, IDE_VERSION, Paths, atomic_write_
 from .project import Project
 from .package import verify_package
 
-FORBIDDEN_SOURCE = {".py", ".pyi", ".pyx", ".c", ".cpp", ".h", ".java", ".cs", ".ts", ".js", ".cjs", ".mjs"}
+FORBIDDEN_SOURCE = {".py", ".pyi", ".pyx", ".zhxb", ".c", ".cpp", ".h", ".java", ".cs", ".ts", ".js", ".cjs", ".mjs"}
 FORBIDDEN_PARTS = {"site-packages", "pip", "pytest", ".venv", "sdk", "downloads", "__pycache__"}
 # Bump when the standalone archive layout/compression policy changes so an
 # existing artifact cannot be mistaken for one produced by the new packager.
 PACKAGING_FORMAT_VERSION = 2
+
+# Customer imports are dynamic, so the frozen hosts explicitly include this
+# reviewed general-purpose standard-library surface. External packages still
+# use the existing isolated plugin/module contracts.
+STANDARD_LIBRARY_IMPORTS = (
+    'array', 'base64', 'bisect', 'bz2', 'configparser', 'csv', 'decimal', 'difflib',
+    'fractions', 'functools', 'gzip', 'hashlib', 'heapq', 'html.parser', 'http.client',
+    'http.server', 'ipaddress', 'itertools', 'logging.handlers', 'lzma', 'math', 'mmap',
+    'pathlib', 'pickle', 'queue', 'random', 're', 'selectors', 'shutil', 'socket',
+    'sqlite3', 'ssl', 'statistics', 'string', 'struct', 'tarfile', 'threading', 'time',
+    'unittest', 'urllib.parse', 'urllib.request', 'uuid', 'xml.etree.ElementTree', 'zipfile', 'zlib',
+)
+
+RUNTIME_SOURCE_NAMES = ("paths.py", "project.py", "runner.py", "processes.py", "worker.py", "plugins.py", "compiler.py",
+    "plugin_host.py", "dll.py", "dll_host.py", "data.py", "routines.py", "routine_signatures.py", "source.py", "project_sources.py",
+    "modules.py", "i18n.py", "runtime_api.py", "package.py", "automation.py", "dex_bridge.py", "flow.py",
+    "development.py", "platform.py", "control_catalog.py", "tasks.py", "menus.py")
 
 
 class BuildError(RuntimeError):
@@ -40,16 +59,15 @@ def runtime_fingerprint(paths, profile="basic"):
         directory = "project-runtime" if profile == "basic" else f"project-runtime-{profile}"
         manifest = read_json(paths.resources / "runtime/prebuilt" / directory / "runtime.json", {})
         return manifest.get("fingerprint", "")
-    runtime_names = ("paths.py", "project.py", "runner.py", "processes.py", "worker.py", "plugins.py", "compiler.py",
-                     "plugin_host.py", "runtime_api.py", "package.py", "automation.py", "dex_bridge.py", "flow.py")
+    runtime_names = RUNTIME_SOURCE_NAMES
     if profile == "vision":
         runtime_names += ("vision.py", "label_io.py")
     if profile == "node":
-        runtime_names += ("worker_bytecode.cjs",)
+        runtime_names += ("worker_bytecode.cjs", "worker_js.cjs", "compile_js.cjs", "source_contract.cjs")
     files = [paths.src / "pcide/core" / name for name in runtime_names]
     files += [paths.src / "pcide" / "runtime" / "launcher.py", paths.src / "pcide" / "runtime_api.py",
               paths.src / "pcide" / "ui" / "form_runtime.py"]
-    digest = hashlib.sha256((IDE_VERSION + sys.implementation.cache_tag + profile).encode())
+    digest = hashlib.sha256((IDE_VERSION + sys.implementation.cache_tag + profile + json.dumps(STANDARD_LIBRARY_IMPORTS)).encode())
     for path in sorted(files):
         digest.update(str(path.relative_to(paths.src)).encode())
         digest.update(sha256_file(path).encode())
@@ -60,7 +78,13 @@ class BuildManager:
     def __init__(self, paths):
         self.paths = paths.ensure()
 
-    def build(self, project, mode="standalone"):
+    def build(self, project, mode="standalone", cancel=None, force=False):
+        if project.manifest['language'] not in {'python', 'zhxb', 'javascript', 'typescript'}:
+            raise BuildError('通用软件工程应使用 BuildService 的原生/引擎构建入口')
+        def check_cancel():
+            if cancel is not None and cancel.is_set():
+                raise BuildError('构建已取消')
+        check_cancel()
         if os.name != "nt":
             raise BuildError("Windows EXE builds require Windows")
         if mode not in {"directory", "standalone"}:
@@ -85,13 +109,15 @@ class BuildManager:
         if not verify_package(runtime_dir, "runtime.json"):
             raise BuildError("precompiled runtime files failed hash verification")
         inputs = project.input_files_for_build()
+        from .modules import load_modules
+        load_modules(project)
         identities = {p.relative_to(project.root).as_posix(): sha256_file(p) for p in inputs}
         stamp = {"inputs": identities, "runtime": expected, "mode": mode,
                  "packaging": PACKAGING_FORMAT_VERSION}
         fingerprint = hashlib.sha256(json.dumps(stamp, sort_keys=True).encode()).hexdigest()
         target = self.paths.artifacts / project.root.name
         previous = read_json(target / "build.json", {})
-        if previous.get("fingerprint") == fingerprint and self.verify(target):
+        if not force and previous.get("fingerprint") == fingerprint and self.verify(target):
             return {"ok": True, "cache_hit": True, "changed_files": 0, "mode": mode,
                     "artifact": str(target / (project.root.name + ".exe")), "fingerprint": fingerprint}
         stage = self.paths.artifacts / ("_staging-" + uuid.uuid4().hex)
@@ -121,32 +147,36 @@ class BuildManager:
             payload.mkdir(parents=True, exist_ok=True)
             outputs = {}
             for source in inputs:
+                check_cancel()
                 relative = source.relative_to(project.root)
                 digest = identities[relative.as_posix()]
                 if source.suffix in {".py", ".zhxb"}:
                     destination = payload / relative.with_suffix(".pyc")
-                    identity = hashlib.sha256((relative.as_posix() + digest).encode()).hexdigest()
+                    identity = hashlib.sha256((relative.as_posix() + digest + expected + identities.get('.pcide/data.json', '') + identities.get('.pcide/routines.json', '')).encode()).hexdigest()
                     bytecode = cache / (identity + "-" + sys.implementation.cache_tag + ".pyc")
-                    if not valid_bytecode_cache(bytecode):
-                        if source.suffix == ".zhxb":
-                            from .compiler import emit_python
-                            generated = cache / (identity + ".generated.py")
-                            generated.write_text(emit_python(source.read_text(encoding="utf-8")), encoding="utf-8")
-                            py_compile.compile(str(generated), cfile=str(bytecode), dfile=relative.as_posix(), doraise=True)
+                    if force or not valid_bytecode_cache(bytecode):
+                        if source.is_relative_to(project.root / "src"):
+                            from .source import compile_source
+                            code = compile_source(source.read_text(encoding="utf-8"), relative.as_posix(),
+                                                  metadata=read_json(project.ide_dir / 'routines.json', {}),
+                                                  data=project.load_data(), file=relative.as_posix())
+                            bytecode.write_bytes(importlib.util.MAGIC_NUMBER + (1).to_bytes(4, 'little') + bytes.fromhex(digest[:16]) + marshal.dumps(code))
                         else:
                             py_compile.compile(str(source), cfile=str(bytecode), dfile=relative.as_posix(), doraise=True)
                         record_bytecode_cache(bytecode)
                     material = bytecode
                 elif source.suffix.lower() in {".js", ".ts"} and source.is_relative_to(project.root / "src"):
                     destination = payload / relative.with_suffix(".jsc")
-                    identity = hashlib.sha256((relative.as_posix() + digest + json.dumps(handlers) + expected).encode()).hexdigest()
+                    identity = hashlib.sha256((relative.as_posix() + digest + json.dumps(handlers) + expected + identities.get('.pcide/data.json', '') + identities.get('.pcide/routines.json', '')).encode()).hexdigest()
                     bytecode = cache / (identity + ".jsc")
-                    if not valid_bytecode_cache(bytecode):
+                    if force or not valid_bytecode_cache(bytecode):
                         from .paths import node_runtime
                         command = [node_runtime(), str(self.paths.resources / "pcide/core/compile_js.cjs") if getattr(sys, "frozen", False) else str(Path(__file__).with_name("compile_js.cjs")),
                                    str(source), str(bytecode), str(self.paths.resources / "sdk/typescript/package/lib/typescript.js"),
-                                   str(self.paths.resources / "third_party/bytenode/index.cjs"), project.manifest["language"], json.dumps(handlers)]
-                        subprocess.run(command, check=True, timeout=30, capture_output=True, text=True, encoding="utf-8")
+                                   str(self.paths.resources / "third_party/bytenode/index.cjs"), project.manifest["language"], json.dumps(handlers), str(project.root)]
+                        from .processes import run_bounded
+                        run_bounded(command, cwd=project.root, timeout=30, cancel=cancel,
+                                    log_path=self.paths.logs / ("compile-js-" + uuid.uuid4().hex + ".log"))
                         record_bytecode_cache(bytecode)
                     material = bytecode
                 elif source.suffix.lower() in FORBIDDEN_SOURCE:
@@ -161,6 +191,14 @@ class BuildManager:
             manifest = copy_manifest(project)
             manifest["entry"] = Path(manifest["entry"]).with_suffix(".pyc" if manifest["language"] in {"python", "zhxb"} else ".jsc").as_posix()
             atomic_write_json(payload / ".pcide" / "project.json", manifest)
+            public = []
+            from .compiler import parse
+            for source in project.scripts():
+                if source.suffix == '.zhxb':
+                    public += [{'public': True, 'file': source.relative_to(project.root).as_posix(), 'sourceName': procedure.name}
+                               for procedure in parse(source.read_text(encoding='utf-8')).procedures if procedure.public]
+            atomic_write_json(payload / '.pcide/public.json', public)
+            outputs['.pcide/public.json'] = True
             for plugin_path in (payload / "plugins").glob("*/plugin.json") if (payload / "plugins").exists() else []:
                 plugin = read_json(plugin_path)
                 if plugin["kind"] == "python" and Path(plugin["entry"]).suffix == ".py":
@@ -192,6 +230,7 @@ class BuildManager:
             hashes = {p.relative_to(stage).as_posix(): sha256_file(p) for p in stage.rglob("*") if p.is_file() and p.name != "build.json"}
             atomic_write_json(stage / "build.json", {"version": 1, "fingerprint": fingerprint,
                 "runtime": expected, "mode": mode, "inputs": identities, "files": hashes, "changed": changed})
+            check_cancel()
             if target.exists():
                 target.rename(backup)
             stage.rename(target)

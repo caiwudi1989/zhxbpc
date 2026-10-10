@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 import urllib.error
@@ -9,6 +10,28 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
+from contextlib import closing
+
+
+class _PluginProxy:
+    """Worker-owned library calls; every call closes its isolated host."""
+    def call(self, plugin_id, capability, params=None, timeout=5):
+        from .plugins import PluginRegistry
+        from .project import Project
+        if type(timeout) not in {int,float} or not 0.05 <= timeout <= 60:
+            raise ValueError('支持库超时必须为 0.05 到 60 秒')
+        project=Project.open(Path.cwd())
+        registry=PluginRegistry(project.root,project.manifest.get('permissions',[]))
+        try:
+            registry.load(plugin_id,timeout=timeout)
+            return registry.call(plugin_id,capability,params,timeout=timeout)['result']
+        finally:
+            registry.close()
+
+
+plugins = _PluginProxy()
+
+from . import tasks
 
 
 class _UiProxy:
@@ -49,6 +72,9 @@ class _UiProxy:
 
 ui = _UiProxy()
 
+
+from .dll import dll
+
 class _DatabaseProxy:
     def connect(self, path: str = "database/app.sqlite"):
         raw = str(path or "").replace("\\", "/")
@@ -60,14 +86,15 @@ class _DatabaseProxy:
     def query(self, connection, sql: str, params=()):
         if not isinstance(sql, str) or len(sql) > 100_000:
             raise ValueError("SQL 过长")
-        cursor = connection.execute(sql, tuple(params))
-        rows = cursor.fetchmany(10_000)
+        with closing(connection.execute(sql, tuple(params))) as cursor:
+            rows = cursor.fetchmany(10_000)
         return [dict(row) if isinstance(row, sqlite3.Row) else tuple(row) for row in rows]
     def execute(self, connection, sql: str, params=()):
         if not isinstance(sql, str) or len(sql) > 100_000:
             raise ValueError("SQL 过长")
-        cursor = connection.execute(sql, tuple(params)); connection.commit()
-        return {"rowcount": cursor.rowcount, "lastrowid": cursor.lastrowid}
+        with closing(connection.execute(sql, tuple(params))) as cursor:
+            connection.commit()
+            return {"rowcount": cursor.rowcount, "lastrowid": cursor.lastrowid}
 
 db = _DatabaseProxy()
 
@@ -78,7 +105,9 @@ class _NetworkProxy:
         if parsed.scheme not in {"http", "https"} or parsed.hostname is None or parsed.username or parsed.password or method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
             raise ValueError("网络请求只允许 HTTP/HTTPS")
         try:
-            timeout = max(1, min(float(timeout), 60))
+            timeout = float(timeout)
+            if not math.isfinite(timeout) or not 0 < timeout <= 60:
+                raise ValueError('网络超时必须为有限的 0..60 秒')
         except (TypeError, ValueError) as exc:
             raise ValueError("网络请求超时无效") from exc
         payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -95,7 +124,10 @@ class _NetworkProxy:
                 except ValueError: content = text
                 return {"status": response.status, "data": content}
         except urllib.error.HTTPError as exc:
-            return {"status": exc.code, "error": str(exc)}
+            try:
+                return {"status": exc.code, "error": str(exc)}
+            finally:
+                exc.close()
 
 network = _NetworkProxy()
 

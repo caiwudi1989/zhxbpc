@@ -197,13 +197,15 @@ class Project:
         self.manifest = manifest
         if not isinstance(manifest, dict) or manifest.get("schema") != 1:
             raise ProjectError("unsupported project schema")
-        if manifest.get("language") not in {"python", "javascript", "typescript", "zhxb"}:
-            raise ProjectError("unsupported script language")
+        if manifest.get("language") not in {"python", "javascript", "typescript", "zhxb", "c", "cpp", "csharp", "html", "gdscript"}:
+            raise ProjectError("unsupported project language")
         if not isinstance(manifest.get("name"), str) or not manifest["name"].strip():
             raise ProjectError("project name required")
         execution = manifest.get("execution", {})
         if not isinstance(execution, dict):
             raise ProjectError("execution settings must be an object")
+        if set(execution)-{'timeout_seconds','max_output_lines'}:
+            raise ProjectError('unsupported execution settings/mode')
         timeout = execution.get("timeout_seconds", 60)
         output = execution.get("max_output_lines", 5000)
         if type(timeout) not in {int, float} or not math.isfinite(timeout) or not 0 < timeout <= 86400:
@@ -216,6 +218,8 @@ class Project:
         from .platform import validate_platform
         try:
             self.manifest["platform"] = validate_platform(manifest.get("platform"))
+            from .development import validate_development
+            self.manifest['development'] = validate_development(manifest.get('development'), manifest['language'])
         except ValueError as exc:
             raise ProjectError(str(exc)) from exc
         self.entry_path
@@ -347,7 +351,9 @@ class Project:
 
     def save_manifest(self):
         from .platform import validate_platform
+        from .development import validate_development
         self.manifest["platform"] = validate_platform(self.manifest.get("platform"))
+        self.manifest['development'] = validate_development(self.manifest.get('development'), self.manifest['language'])
         atomic_write_json(self.ide_dir / "project.json", self.manifest)
 
     @classmethod
@@ -398,7 +404,7 @@ class Project:
         return sorted(p for p in (self.root / "src").rglob("*") if p.is_file() and p.suffix in {".py", ".js", ".ts", ".zhxb"})
 
     def input_files_for_build(self):
-        files = [self.ide_dir / "project.json", self.flow_path]
+        files = [self.ide_dir / "project.json", self.ide_dir / "data.json", self.ide_dir / "routines.json", self.ide_dir / "modules.json", self.ide_dir / 'libraries.json', self.flow_path]
         ui = self.root / "ui"
         if ui.exists():
             files.extend(p for p in ui.rglob("*.form.json") if p.is_file() and not p.is_symlink())

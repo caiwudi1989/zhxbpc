@@ -8,9 +8,9 @@ from typing import Any, Callable
 from .agent import AgentError, ToolSpec, WorkspaceGuard
 
 _SKIP = {".git", "__pycache__", ".pytest_cache", "node_modules", "build", "cache", "runtime"}
-_TEXT = {".py", ".js", ".ts", ".json", ".md", ".txt", ".form", ".flow", ".css", ".html", ".c", ".h"}
+_TEXT = {".py", ".zhxb", ".js", ".ts", ".json", ".md", ".txt", ".form", ".flow", ".css", ".html", ".c", ".h", ".cpp", ".hpp", ".cs", ".csproj", ".gd", ".tscn", ".godot", ".cfg"}
 
-def project_tools(root: str | Path, approved_paths: set[str] | frozenset[str] = (), run_tests: Callable[[], dict[str, Any]] | None = None) -> tuple[ToolSpec, ...]:
+def project_tools(root: str | Path, approved_paths: set[str] | frozenset[str] = (), run_tests: Callable[[], dict[str, Any]] | None = None, on_ui_written=None) -> tuple[ToolSpec, ...]:
     guard = WorkspaceGuard(root, approved_paths)
     root_path = guard.root
 
@@ -38,7 +38,10 @@ def project_tools(root: str | Path, approved_paths: set[str] | frozenset[str] = 
         matches = []
         for item in list_files({"path": args.get("path", ".")})["files"]:
             try:
-                lines = (root_path / item).read_text(encoding="utf-8").splitlines()
+                path = root_path / item
+                if path.stat().st_size > 2 * 1024 * 1024:
+                    continue
+                lines = path.read_text(encoding="utf-8").splitlines()
             except (OSError, UnicodeDecodeError):
                 continue
             for line_no, line in enumerate(lines, 1):
@@ -78,15 +81,48 @@ def project_tools(root: str | Path, approved_paths: set[str] | frozenset[str] = 
             try:
                 raw = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if isinstance(raw, dict):
-                    manifest = {key: raw.get(key) for key in ("name", "language", "entry", "modules", "platform") if key in raw}
+                    manifest = {key: raw.get(key) for key in ("name", "language", "entry", "modules", "platform", "development") if key in raw}
             except (OSError, ValueError):
                 manifest = {"error": "工程配置无法解析"}
         files = list_files({"path": "."})
         return {"manifest": manifest, "file_count": len(files["files"]), "truncated": files["truncated"],
                 "windows": len(list((root_path / "ui").glob("*.form.json"))) if (root_path / "ui").is_dir() else 0}
 
+    def ui_path(args):
+        path = str(args.get('path') or 'ui/main.form.json')
+        rel = guard._relative(path)
+        if not rel.startswith('ui/') or not rel.endswith('.form.json'):
+            raise AgentError('UI工具只能处理ui中的.form.json')
+        return rel
+
+    def inspect_ui(args):
+        import json
+        from .project import validate_form
+        rel = ui_path(args)
+        if not (root_path / rel).exists():
+            return {'path': rel, 'exists': False, 'contract': 'version/form/controls/grid；控件id和name唯一，事件必须绑定合法函数名称'}
+        model = validate_form(json.loads(guard.read(rel)['content']))
+        from .control_catalog import CONTROL_LABELS
+        return {'path': rel, 'exists': True, 'model': model, 'control_types': list(CONTROL_LABELS),
+                'workflow': '写完整model；事件正文另用read_file/write_file编辑；写后设计器自动刷新，预览按钮可检查窗口'}
+
+    def write_ui(args):
+        import json
+        from .project import validate_form
+        rel = ui_path(args)
+        model = validate_form(args.get('model'))
+        result = guard.write(rel, json.dumps(model, ensure_ascii=False, indent=2) + '\n', create=bool(args.get('create')))
+        if on_ui_written:
+            on_ui_written(rel)
+        return {**result, 'controls': len(model['controls']), 'validated': True}
+
     common = {"type": "object", "additionalProperties": False}
     return (
+        ToolSpec('inspect_ui', '读取结构化窗口模型并登记读取；UI编辑前使用此工具', inspect_ui,
+                 parameters={**common, 'properties': {'path': {'type': 'string'}}}),
+        ToolSpec('write_ui', '通过完整JSON模型写入窗口，校验控件、ID、属性、事件并刷新设计器；只写已批准路径', write_ui,
+                 mutating=True, requires_approval=True, parameters={**common, 'required': ['path', 'model'],
+                 'properties': {'path': {'type': 'string'}, 'model': {'type': 'object'}, 'create': {'type': 'boolean'}}}),
         ToolSpec("inspect_project", "读取项目摘要、语言、入口、平台能力和窗口数量", inspect_project, parameters={**common, "properties": {}}),
         ToolSpec("list_files", "列出项目内的文本文件", list_files, parameters={**common, "properties": {"path": {"type": "string"}}}),
         ToolSpec("search", "在项目源码中搜索文本", search, parameters={**common, "properties": {"query": {"type": "string"}, "path": {"type": "string"}}}),

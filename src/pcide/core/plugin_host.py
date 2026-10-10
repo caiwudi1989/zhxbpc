@@ -76,6 +76,7 @@ class NativePlugin:
 
 
 def main():
+    sys._pcide_plugin_host = True
     output = sys.stdout
     plugin = None
     manifest = None
@@ -95,7 +96,13 @@ def main():
                     if not entry.is_relative_to(directory):
                         raise ValueError("plugin entry escapes directory")
                     if manifest.kind == "native":
-                        plugin = NativePlugin(entry)
+                        if manifest.abi == "dll-v1":
+                            from .dll_host import DllLibrary
+                            plugin = DllLibrary(entry)
+                        elif manifest.abi in {"json-v1", "c-json-v1"}:
+                            plugin = NativePlugin(entry)
+                        else:
+                            raise ValueError("unsupported native ABI")
                     elif manifest.kind == "python":
                         if manifest.python_abi != f"cp{sys.version_info.major}{sys.version_info.minor}":
                             raise ValueError("Python/pyd ABI does not match host")

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "form": {
+    "title": "下拉选择",
+    "width": 760,
+    "height": 440,
+    "background": "#ffffff",
+    "events": {
+      "load": "on_main_form_load"
+    },
+    "window": {
+      "maximize": true,
+      "minimize": true,
+      "resizable": true,
+      "fixed_width": null,
+      "fixed_height": null,
+      "min_width": 100,
+      "min_height": 100,
+      "max_width": 10000,
+      "max_height": 10000,
+      "anchor": "center",
+      "dock": "none",
+      "auto_fill": false
+    }
+  },
+  "controls": [
+    {
+      "id": "Label1",
+      "type": "Label",
+      "name": "Label1",
+      "x": 30,
+      "y": 25,
+      "width": 400,
+      "height": 34,
+      "parent": "",
+      "properties": {
+        "text": "窗口就绪"
+      },
+      "events": {}
+    },
+    {
+      "id": "Demo",
+      "type": "ComboBox",
+      "name": "Demo",
+      "x": 30,
+      "y": 75,
+      "width": 300,
+      "height": 60,
+      "parent": "",
+      "properties": {
+        "items": [
+          "A",
+          "B",
+          "C"
+        ]
+      },
+      "events": {}
+    },
+    {
+      "id": "Button1",
+      "type": "Button",
+      "name": "Button1",
+      "x": 30,
+      "y": 170,
+      "width": 120,
+      "height": 34,
+      "parent": "",
+      "properties": {
+        "text": "执行"
+      },
+      "events": {
+        "click": "on_Button1_click"
+      }
+    }
+  ],
+  "grid": {
+    "enabled": true,
+    "size": 10,
+    "snap": true
+  }
+}

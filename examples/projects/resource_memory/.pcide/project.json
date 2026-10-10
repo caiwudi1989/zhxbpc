@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "name": "resource_memory",
+  "language": "python",
+  "entry": "src/main.py",
+  "modules": [],
+  "execution": {
+    "timeout_seconds": 60,
+    "max_output_lines": 5000
+  },
+  "permissions": [
+    "vision.simulated"
+  ],
+  "plugins": [],
+  "platform": {
+    "version": 1,
+    "capabilities": {
+      "database": {
+        "enabled": true,
+        "providers": [
+          "sqlite"
+        ]
+      },
+      "api": {
+        "enabled": true,
+        "protocols": [
+          "http",
+          "https",
+          "websocket"
+        ]
+      },
+      "script": {
+        "enabled": true,
+        "engines": [
+          "python",
+          "javascript",
+          "typescript",
+          "zhxb"
+        ]
+      },
+      "ai": {
+        "enabled": false,
+        "backends": [
+          "onnx",
+          "opencv"
+        ]
+      },
+      "game": {
+        "enabled": false,
+        "backends": [
+          "unity",
+          "opengl"
+        ]
+      },
+      "compiler": {
+        "enabled": true,
+        "modes": [
+          "development",
+          "standard",
+          "release"
+        ]
+      },
+      "agent": {
+        "enabled": false,
+        "roles": [
+          "architect",
+          "code",
+          "ui",
+          "database",
+          "test"
+        ]
+      },
+      "runtime": {
+        "enabled": true,
+        "profiles": [
+          "basic"
+        ]
+      }
+    },
+    "providers": []
+  },
+  "development": {
+    "version": 1,
+    "template": "python-script",
+    "target": "script-standalone",
+    "configuration": "Release",
+    "jobs": 4,
+    "tools": {},
+    "engine_root": ""
+  }
+}
